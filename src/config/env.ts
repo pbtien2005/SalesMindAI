@@ -14,7 +14,31 @@ const tokenEncKey = z.string().refine(
   { message: 'TOKEN_ENC_KEY phải là base64 chuẩn của đúng 32 byte' },
 );
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** URL gốc công khai: không có dấu / cuối, không query hay fragment (để ghép đường dẫn an toàn). */
+const publicBaseUrl = z
+  .string()
+  .url()
+  .refine((v) => {
+    try {
+      const u = new URL(v);
+      return (u.protocol === 'https:' || LOOPBACK_HOSTS.has(u.hostname)) && u.pathname === '/' && !u.search && !u.hash && !v.endsWith('/');
+    } catch {
+      return false;
+    }
+  }, 'PUBLIC_BASE_URL phải là https (hoặc http://localhost, http://127.0.0.1), không có dấu / ở cuối, không có đường dẫn hay query');
+
 const envSchema = z.object({
+  FB_APP_ID: z.string().min(1),
+  /** Tùy chọn: ID cấu hình Facebook Login for Business. Bỏ trống thì dùng tham số `scope`. */
+  // `KEY=` rỗng trong .env được hiểu là "không đặt" (không báo lỗi).
+  FB_LOGIN_CONFIG_ID: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? v : undefined)),
+  PUBLIC_BASE_URL: publicBaseUrl,
   APP_SECRET: z.string().min(1),
   VERIFY_TOKEN: z.string().min(1),
   TOKEN_ENC_KEY: tokenEncKey,

@@ -4,6 +4,7 @@ import Fastify, {
   type FastifyRequest,
   type FastifyServerOptions,
 } from 'fastify';
+import { oauthRoutes, type OAuthRouteOptions } from './auth/oauth-routes.js';
 import type { WebhookQueue } from './queue/boss.js';
 import { webhookRoutes } from './webhook/routes.js';
 
@@ -12,6 +13,8 @@ export interface AppDeps {
   verifyToken: string;
   queue: WebhookQueue;
   enqueueTimeoutMs?: number;
+  /** Có thì bật luồng kết nối Page qua Facebook Login (`/auth/facebook/*`). */
+  oauth?: OAuthRouteOptions;
 }
 
 /**
@@ -56,7 +59,9 @@ export function buildApp(opts: FastifyServerOptions = {}, deps?: AppDeps): Fasti
   app.get('/healthz', async () => ({ status: 'ok' }));
 
   if (deps) {
-    void app.register(webhookRoutes, deps);
+    const { oauth, ...webhook } = deps;
+    void app.register(webhookRoutes, webhook);
+    if (oauth) void app.register(oauthRoutes, oauth);
   }
 
   return app;

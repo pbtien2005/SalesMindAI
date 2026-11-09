@@ -10,7 +10,7 @@ Kế hoạch chi tiết: [doc/PLAN-module1.md](doc/PLAN-module1.md).
 | 1 | Kế hoạch: chia việc, quyết định kỹ thuật, điểm Meta API cần xác minh | xong | 2026-11-09 | Kế hoạch lưu ở `doc/PLAN-module1.md`. Đã đối chiếu 8 điểm Meta API với tài liệu chính thức (bảng dưới): 4 điểm xác minh được, 4 điểm tài liệu không nói rõ và cần thử bằng Page thật ở mốc 4–5. `GRAPH_API_VERSION` mẫu đổi sang v26.0. `npm run typecheck` và `npm test` (5/5) vẫn đạt. |
 | 2 | DB (Drizzle) và mã hóa Page token (AES-256-GCM) | xong | 2026-11-09 | `npm run typecheck` sạch; `npm test` 36/36 đạt (token-crypto 16, db 15, env 4, healthz 1) trên Postgres 18.6 của Docker. `db:migrate` chạy được 2 lần liên tiếp (idempotent) và từ thư mục khác. `code-review` (medium) 9 phát hiện: đã sửa 8 (khóa ngoại ghép tenant/page/conversation, handler lỗi pool, đường dẫn migration, bỏ credentials hard-code khỏi `drizzle.config.ts`, `global-setup` tự tạo DB test, kiểm tra khóa base64 chặt, `truncateAll` động, index FK), hoãn 1 sang mốc 3 (`last_message_at` chỉ có đường ghi khi có worker). Đổi cổng Postgres Docker sang 5433 vì PostgreSQL cài sẵn trên máy chiếm 5432. |
 | 3 | Webhook, kiểm tra chữ ký, khử trùng theo message.mid | xong | 2026-11-09 | `npm run typecheck` sạch; `npm test` 105/105 đạt (chạy 3 lần liên tiếp, không flaky), gồm signature 15, parse 18, route 19, toàn tuyến Postgres + pg-boss thật 17. Smoke test với server thật (tiến trình riêng, DB dev): GET xác minh 200/403; POST chữ ký đúng 200 trong 17–54 ms; gửi lại cùng payload vẫn 1 dòng; chữ ký sai, toàn số 0, thiếu đều 403; echo bị bỏ; tiếng Việt qua body `\u`-escape đúng; log không chứa nội dung tin, PSID, secret, chữ ký. Cổng bị chiếm thì thoát sạch với mã 1. Mutation: phá `ON CONFLICT` thì test khử trùng đỏ. `code-review` (medium) 7 phát hiện: sửa 6, giữ 1 (xem dưới). |
-| 4 | Kết nối Page thật | chưa làm | | |
+| 4 | Kết nối Page thật | đang làm (code xong, chờ bạn kiểm tra với Page thật) | 2026-11-09 | **Đã có bằng chứng:** `npm run typecheck` sạch; `npm test` 187/187 đạt, chạy 2 lần liên tiếp (graph-client 22, oauth-routes 36, oauth-state 16, env 12 và các file cũ). Mutation: bỏ ràng buộc nonce của cookie thì 4 test đỏ; bỏ `setWhere` (ghi đè Page tenant khác) thì 1 test đỏ; bỏ `subscribedAt: null` khi kết nối lại thì 1 test đỏ. Server thật + CLI: `tenant:create` in liên kết; `/auth/facebook/start` 302 sang Facebook đúng `client_id`, `redirect_uri`, `state`, `scope`; callback không cookie 400; trình duyệt khác mở cùng state 400; phát lại 400; **gọi Meta thật với code và App ID giả: Meta trả HTTP 400, mã 101, `OAuthException`, client parse đúng và trả trang 502**; log không chứa state, code, secret. `code-review` 2 lượt: 18 phát hiện, sửa 14, giữ 4 có chủ ý. **Chưa có bằng chứng:** đăng nhập Facebook, lưu Page, đăng ký webhook, nhận tin bằng Page thật. Làm theo [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md) rồi báo kết quả. |
 | 5 | Backfill tin cũ | chưa làm | | |
 | 6 | Quan sát (log, metric), README, review | chưa làm | | |
 
@@ -38,6 +38,28 @@ Trạng thái: **đã xác minh** = có trong tài liệu; **chưa xác minh** =
 - **Cấu hình queue không cập nhật khi đã tồn tại:** `createBoss` giờ gọi `updateQueue` cho queue có sẵn. `retryDelayMax` không sửa được qua `updateQueue` (giới hạn của pg-boss).
 
 Giữ nguyên có chủ ý: `stripNul` chạy ở cả route và worker. Lần ở route bắt buộc (pg-boss lưu jsonb); lần ở worker là phòng thủ, chỉ chạy trên trường đã rút ra nên rẻ.
+
+## Quyết định và lỗi phát hiện khi làm mốc 4
+
+- **State gắn với trình duyệt bằng cookie:** state nằm trong URL (lịch sử, Referer, log proxy) nên chỉ state thôi chưa đủ để chống chiếm luồng. Trình duyệt đầu tiên mở liên kết "nhận" state bằng nonce trong cookie (HttpOnly, SameSite=Lax, Secure khi HTTPS); callback phải khớp cả hai. DB chỉ lưu băm SHA-256 của state và nonce. Do `code-review` chỉ ra.
+- **Không ghi đè Page của tenant khác:** `ON CONFLICT ... DO UPDATE ... WHERE tenant_id = ?`. Page đã thuộc tenant khác thì báo rõ, không đăng ký webhook.
+- **Lưu trước, đăng ký sau:** worker cần thấy Page trong DB khi tin đầu tiên tới.
+- **Lỗi từng Page độc lập:** Meta, DB hay mã hóa lỗi ở một Page không làm mất các Page còn lại.
+- **`status` là sức khỏe của token, `subscribed_at` là trạng thái đăng ký webhook.** Kết nối lại luôn xóa `subscribed_at` cũ để không nói dối.
+- **Lỗi thật tìm ra:** `tenant:list` luôn báo 0 Page (truy vấn con của Drizzle bỏ tên bảng); đã viết lại bằng LEFT JOIN. Danh sách Page bị cắt cụt im lặng ở 2000 Page; giờ báo lỗi.
+- **Hỗ trợ `FB_LOGIN_CONFIG_ID` (tùy chọn):** tài liệu Meta nói app loại Business nên dùng `config_id` thay `scope` và không nói `scope` còn được chấp nhận không. Có giá trị thì dùng `config_id`, bỏ trống thì dùng `scope`.
+- **Đã bỏ biến `OAUTH_REDIRECT_URI`** khỏi kế hoạch: redirect URI luôn là `PUBLIC_BASE_URL/auth/facebook/callback`, ít nguy cơ cấu hình lệch.
+
+Giữ nguyên có chủ ý:
+- State bị tiêu thụ trước khi gọi Meta (chống phát lại), nên lỗi tạm thời phía sau buộc phải tạo liên kết mới.
+- Các Page xử lý tuần tự trong một request callback; doanh nghiệp thường chỉ có vài Page. Nếu một tài khoản có hàng chục Page và Meta chậm, request có thể bị proxy cắt.
+- `client_secret` đi trong query của GET `oauth/access_token`, đúng như tài liệu Meta mô tả; code không bao giờ ghi URL ra log.
+
+Việc cần làm ở mốc 6: giới hạn tốc độ cho `/auth/facebook/*` (hiện ai cũng có thể gọi và mỗi lần gọi có một truy vấn DB).
+
+## Điểm cần xác minh bằng Page thật (mốc 4)
+
+Xem danh sách đầy đủ cuối [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md): đơn vị `timestamp`, payload tin có ảnh, `me/accounts` so với `{user-id}/accounts`, `business_management` và `config_id`, `code` OAuth dùng một lần không, hành vi ở chế độ Development.
 
 ## Việc còn lại / rủi ro của mốc 3
 

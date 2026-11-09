@@ -39,6 +39,8 @@ Nguyên tắc sản phẩm:
 - `npm run build` / `npm start`: build và chạy bản production
 - `npm run db:generate`: sinh migration từ `src/db/schema.ts` (không cần kết nối DB)
 - `npm run db:migrate`: áp migration lên `DATABASE_URL` (đọc `.env`)
+- `npm run cli -- tenant:create "<tên>"`: tạo tenant và in liên kết kết nối Page (một lần, 10 phút); xem `tenant:connect-url`, `tenant:list`
+- Kiểm tra mốc 4 với Page thật: `doc/KET-NOI-PAGE.md`
 
 Test DB chạy trên `salesmind_test` (tên phải kết thúc bằng `_test`, test xóa sạch schema đó mỗi lần chạy) nên cần Postgres đang chạy.
 

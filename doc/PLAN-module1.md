@@ -63,7 +63,7 @@ Test (dùng `app.inject()`): chữ ký đúng 200, sai 403, thiếu 403, payload
 3. `/auth/facebook/callback`: kiểm tra state (đúng, chưa dùng, chưa hết hạn), đổi `code` lấy user token, đổi sang token dài hạn (`oauth/access_token`, `grant_type=fb_exchange_token`, gọi từ server vì có app secret), gọi `{user-id}/accounts` lấy Page và Page token, mã hóa rồi lưu, gọi `subscribed_apps` đăng ký field `messages`. Trả trang HTML tối giản "Đã kết nối N Page".
 4. Tunnel (ngrok hoặc cloudflared) để Meta gọi webhook; khai báo URL và `VERIFY_TOKEN` trong Meta App.
 5. Graph client: gặp lỗi token không hợp lệ (ví dụ mã lỗi OAuthException 190, cần đối chiếu mã chính xác) thì đặt `pages.status = token_invalid` và dừng gọi tiếp, không thử lại vô hạn.
-Biến môi trường cần thêm vào `.env.example`: `FB_APP_ID`, `OAUTH_REDIRECT_URI`, `PUBLIC_BASE_URL`.
+Biến môi trường thêm vào `.env.example`: `FB_APP_ID`, `PUBLIC_BASE_URL` (redirect URI luôn là `PUBLIC_BASE_URL/auth/facebook/callback`, nên bỏ `OAUTH_REDIRECT_URI` để khỏi cấu hình lệch), và tùy chọn `FB_LOGIN_CONFIG_ID` (Facebook Login for Business). State còn được gắn với trình duyệt bằng cookie (nonce); chi tiết trong PROGRESS.md.
 Test: state sai, đã dùng, hết hạn đều bị từ chối; token lưu dạng mã hóa, không xuất hiện trong log; Graph client dùng mock (không gọi Meta thật trong test).
 Kiểm tra tay: nhắn từ tài khoản Tester vào Page thử nghiệm, dòng mới xuất hiện trong `messages`.
 

@@ -1,6 +1,8 @@
 import { buildApp } from './app.js';
 import { loadEnv } from './config/env.js';
+import { createTokenCrypto } from './crypto/token-crypto.js';
 import { createDb } from './db/client.js';
+import { GraphClient } from './meta/graph-client.js';
 import { createBoss, createWebhookQueue, startWebhookWorker } from './queue/boss.js';
 import { processWebhookPayload } from './workers/process-webhook.js';
 
@@ -15,6 +17,17 @@ const app = buildApp(
     appSecret: env.APP_SECRET,
     verifyToken: env.VERIFY_TOKEN,
     queue: createWebhookQueue(boss),
+    oauth: {
+      db: dbHandle.db,
+      graph: new GraphClient({
+        apiVersion: env.GRAPH_API_VERSION,
+        appId: env.FB_APP_ID,
+        appSecret: env.APP_SECRET,
+        ...(env.FB_LOGIN_CONFIG_ID ? { loginConfigId: env.FB_LOGIN_CONFIG_ID } : {}),
+      }),
+      crypto: createTokenCrypto(env.TOKEN_ENC_KEY),
+      publicBaseUrl: env.PUBLIC_BASE_URL,
+    },
   },
 );
 
