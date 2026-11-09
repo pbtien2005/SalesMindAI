@@ -4,11 +4,16 @@ import { createTokenCrypto } from './crypto/token-crypto.js';
 import { createDb } from './db/client.js';
 import { GraphClient } from './meta/graph-client.js';
 import { handleBackfillConversation, handleBackfillPage, type BackfillDeps } from './backfill/backfill.js';
+import { createExtractor } from './extraction/factory.js';
+import { runExtraction } from './extraction/run.js';
+import { enqueueExtractions, startSweeper } from './extraction/schedule.js';
 import {
   createBackfillQueue,
   createBoss,
+  createExtractQueue,
   createWebhookQueue,
   startBackfillWorkers,
+  startExtractWorker,
   startWebhookWorker,
   WEBHOOK_QUEUE,
 } from './queue/boss.js';
@@ -57,6 +62,7 @@ const app = buildApp(
  * Dùng cho cả tín hiệu SIGTERM/SIGINT và lỗi khởi động, để không bao giờ thoát mà bỏ dở job.
  */
 let stopMonitor: (() => Promise<void>) | undefined;
+let stopSweeper: (() => Promise<void>) | undefined;
 let shuttingDown = false;
 async function shutdown(reason: string, exitCode: number): Promise<void> {
   if (shuttingDown) return;
@@ -64,6 +70,7 @@ async function shutdown(reason: string, exitCode: number): Promise<void> {
   app.log.info({ reason }, 'đang tắt server');
   try {
     await stopMonitor?.(); // chờ lượt đọc số liệu đang chạy trước khi đóng pg-boss
+    await stopSweeper?.();
     await app.close();
     await boss.stop({ graceful: true, timeout: 20_000 });
     await dbHandle.close();
@@ -88,13 +95,29 @@ try {
   await shutdown('lỗi khởi động', 1);
 }
 
+// AI trích xuất (Module 2). `AI_MODE=offline` là mặc định: luật tất định, không gọi mạng.
+const extractor = createExtractor(env);
+const extractQueue = createExtractQueue(boss);
+app.log.info({ aiMode: env.AI_MODE, model: extractor.model, debounceSeconds: env.AI_DEBOUNCE_SECONDS }, 'AI trích xuất');
+if (env.AI_MODE === 'live') {
+  app.log.warn('AI_MODE=live: nội dung chat của tenant đã bật AI được gửi tới API Anthropic (nước ngoài). Chỉ dùng sau khi kiểm tra pháp lý.');
+}
+
 // Chỉ bắt đầu xử lý job sau khi server đã nhận request được.
 await startWebhookWorker(boss, async (data) => {
   await processWebhookPayload(dbHandle.db, data.payload, app.log, {
     // Phân loại tin do Page gửi theo app_id của echo.
     sender: { ownAppId: env.FB_APP_ID, pageInboxAppIds: env.PAGE_INBOX_APP_IDS },
+    afterStore: async (conversationIds) => {
+      await enqueueExtractions(dbHandle.db, extractQueue, conversationIds, env.AI_DEBOUNCE_SECONDS);
+    },
   });
 });
+
+await startExtractWorker(boss, async ({ conversationId }) => {
+  await runExtraction({ db: dbHandle.db, extractor, log: app.log, contextMessages: env.AI_CONTEXT_MESSAGES }, conversationId);
+});
+stopSweeper = startSweeper({ db: dbHandle.db, queue: extractQueue, log: app.log, delaySeconds: env.AI_DEBOUNCE_SECONDS });
 
 const backfillDeps: BackfillDeps = {
   db: dbHandle.db,

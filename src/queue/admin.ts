@@ -3,6 +3,8 @@ import {
   BACKFILL_CONVERSATION_QUEUE,
   BACKFILL_DEAD_QUEUE,
   BACKFILL_PAGE_QUEUE,
+  EXTRACT_DEAD_QUEUE,
+  EXTRACT_QUEUE,
   WEBHOOK_DEAD_QUEUE,
   WEBHOOK_QUEUE,
 } from './boss.js';
@@ -14,9 +16,11 @@ export const ALL_QUEUES = [
   BACKFILL_PAGE_QUEUE,
   BACKFILL_CONVERSATION_QUEUE,
   BACKFILL_DEAD_QUEUE,
+  EXTRACT_QUEUE,
+  EXTRACT_DEAD_QUEUE,
 ] as const;
 
-export const DEAD_LETTER_QUEUES = [WEBHOOK_DEAD_QUEUE, BACKFILL_DEAD_QUEUE] as const;
+export const DEAD_LETTER_QUEUES = [WEBHOOK_DEAD_QUEUE, BACKFILL_DEAD_QUEUE, EXTRACT_DEAD_QUEUE] as const;
 export const isDeadLetter = (name: string) => (DEAD_LETTER_QUEUES as readonly string[]).includes(name);
 
 export interface QueueSummary {
@@ -59,11 +63,12 @@ export async function assertQueueExists(boss: Pick<PgBoss, 'getQueue'>, name: st
   if (!(await boss.getQueue(name))) throw new Error(`queue ${name} không tồn tại`);
 }
 
-export type DeadLetterTarget = 'webhook' | 'backfill';
+export type DeadLetterTarget = 'webhook' | 'backfill' | 'extraction';
 
 const DEAD_BY_TARGET: Record<DeadLetterTarget, string> = {
   webhook: WEBHOOK_DEAD_QUEUE,
   backfill: BACKFILL_DEAD_QUEUE,
+  extraction: EXTRACT_DEAD_QUEUE,
 };
 
 export interface RedriveResult {

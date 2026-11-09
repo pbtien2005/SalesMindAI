@@ -12,6 +12,7 @@ import {
   type Quote,
   ZERO_USAGE,
 } from './types.js';
+import { foldText } from './verify-evidence.js';
 
 const inbound = (input: ExtractorInput): ExtractorMessage[] => input.messages.filter((m) => m.direction === 'inbound' && m.text.trim() !== '');
 
@@ -52,7 +53,18 @@ const TIME_PATTERNS = [
   /(?:cuối|đầu|giữa)?\s*tháng\s+(?:này|sau|tới)/iu,
 ];
 
-const QUANTITY = /(\d+|một|hai|ba|bốn)\s*(bộ|cái|chiếc)/iu;
+/** Cùng ý với TIME_PATTERNS nhưng cho văn bản đã bỏ dấu (khách gõ không dấu). */
+const TIME_PATTERNS_FOLDED = [
+  /(?:cuoi|dau|giua)\s+tuan(?:\s+(?:nay|sau|toi))?/i,
+  /(?:sang|trua|chieu|toi)\s+(?:nay|mai)/i,
+  /ngay\s+(?:mai|kia|mot)|hom\s+nay|\bmai\b/i,
+  /thu\s+(?:hai|ba|tu|nam|sau|bay|[2-7])/i,
+  /chu\s+nhat/i,
+  /tuan\s+(?:nay|sau|toi)/i,
+  /(?:cuoi|dau|giua)?\s*thang\s+(?:nay|sau|toi)/i,
+];
+
+const QUANTITY =/(\d+|một|hai|ba|bốn)\s*(bộ|cái|chiếc)/iu;
 const ADDRESS = /(?:địa\s+chỉ(?:\s+nhận\s+hàng)?(?:\s+là)?|giao\s+(?:về|tới|đến))\s*[:\-]?\s*([^.\n]{6,100})/iu;
 
 const PURPOSE_RULES: Array<{ purpose: string; intent: string; pattern: RegExp }> = [
@@ -115,9 +127,18 @@ export class OfflineExtractor implements Extractor {
     const addr = lastMatch(msgs, [ADDRESS]);
     if (addr) out.push({ field: 'address', value: addr.m[1]!.trim(), quotes: [quoteOf(addr.msg, addr.m[1]!.trim())] });
 
-    // Cụm thời gian: chép nguyên văn, không giải ngày.
+    // Cụm thời gian: chép nguyên văn, không giải ngày. Thử bản có dấu trước, rồi bản không dấu (khách gõ không dấu);
+    // câu gốc dạng không dấu vẫn được `locateQuote` ánh xạ ngược về đoạn gốc có dấu trước khi lưu.
     const time = lastMatch(msgs, TIME_PATTERNS);
-    if (time) out.push({ field: 'timeline', value: time.m[0].trim(), quotes: [quoteOf(time.msg, time.m[0].trim())] });
+    if (time) {
+      out.push({ field: 'timeline', value: time.m[0].trim(), quotes: [quoteOf(time.msg, time.m[0].trim())] });
+    } else {
+      const folded = lastMatch(
+        msgs.map((m) => ({ ...m, text: foldText(m.text) })),
+        TIME_PATTERNS_FOLDED,
+      );
+      if (folded) out.push({ field: 'timeline', value: folded.m[0].trim(), quotes: [quoteOf(folded.msg, folded.m[0].trim())] });
+    }
 
     // Mục đích và ý định: chỉ xét tin khách MỚI NHẤT.
     const latest = msgs[msgs.length - 1];

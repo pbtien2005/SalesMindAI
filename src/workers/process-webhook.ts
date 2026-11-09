@@ -36,6 +36,11 @@ export interface ProcessStats extends ParseStats {
 export interface ProcessOptions {
   /** Cấu hình phân loại người gửi của tin do Page gửi. Mặc định: không có app riêng, chỉ có Page Inbox. */
   sender?: SenderKindConfig;
+  /**
+   * Gọi SAU khi transaction lưu tin thành công, với các hội thoại vừa có tin khách mới (để xếp việc AI trích
+   * xuất). Lỗi trong đây chỉ được ghi log, KHÔNG làm hỏng job webhook (tin đã lưu; sweeper sẽ bù việc bị lỡ).
+   */
+  afterStore?: (conversationIds: string[]) => Promise<void>;
 }
 
 const DEFAULT_SENDER_CONFIG: SenderKindConfig = { ownAppId: '', pageInboxAppIds: DEFAULT_PAGE_INBOX_APP_IDS };
@@ -74,6 +79,7 @@ export async function processWebhookPayload(
   const stats: ProcessStats = { ...parsed.stats, stored: 0, duplicates: 0, unknownPage: 0, unknownPageOther: 0, policyStored: 0 };
   // Chỉ gồm sự kiện chính sách MỚI thật sự và chỉ ghi log SAU khi transaction thành công (không lặp khi retry).
   let newPolicy: PolicyEventItem[] = [];
+  let customerConversations: string[] = [];
 
   const fbPageIds = [
     ...new Set([
@@ -123,6 +129,7 @@ export async function processWebhookPayload(
       const r = await storeInbound(tx, items, 'webhook', { interactions });
       stats.stored += r.stored;
       stats.duplicates += r.duplicates;
+      customerConversations = r.customerTextConversationIds;
       newPolicy = await storePolicyEvents(tx, policy);
       stats.policyStored = newPolicy.length;
     });
@@ -130,6 +137,14 @@ export async function processWebhookPayload(
 
   // Chỉ ghi số đếm, không ghi nội dung tin, psid hay token.
   log.info({ webhook: stats }, 'đã xử lý webhook');
+  if (opts.afterStore && customerConversations.length > 0) {
+    try {
+      await opts.afterStore(customerConversations);
+    } catch (err) {
+      // Tin đã lưu. Không ném: nếu ném thì job webhook retry vô ích. Sweeper sẽ bù việc trích xuất bị lỡ.
+      log.warn({ err: err instanceof Error ? err.message : String(err), conversations: customerConversations.length }, 'không xếp được việc trích xuất, sweeper sẽ bù');
+    }
+  }
   for (const { page: _page, event } of newPolicy) {
     // Meta cảnh báo hoặc khóa khả năng gửi tin của Page: người vận hành cần biết ngay.
     // `reason` do Meta viết (không phải nội dung của khách).

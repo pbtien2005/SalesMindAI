@@ -8,6 +8,9 @@ import { GraphClient } from '../meta/graph-client.js';
 import { parseBackfillArgs, parseRedriveArgs } from './args.js';
 import { queueOverview, redriveDeadLetter } from '../queue/admin.js';
 import { newConnectUrl, createTenant, listTenants, tenantExists } from '../auth/tenants.js';
+import { extractionStatus, setAiEnabled } from '../extraction/admin.js';
+import { createExtractor } from '../extraction/factory.js';
+import { runExtraction } from '../extraction/run.js';
 import { loadEnv } from '../config/env.js';
 import { createDb } from '../db/client.js';
 import { pages } from '../db/schema.js';
@@ -29,9 +32,13 @@ const USAGE = `Dùng: npm run cli -- <lệnh>
   backfill:status             Xem tiến độ backfill và độ sâu hàng đợi
   pages:resubscribe [<fbPageId>]  Đăng ký lại webhook (danh sách field hiện hành) cho Page đã kết nối.
                               Cần sau khi danh sách field đổi, vì Page cũ chỉ nhận các field lúc kết nối
-  queue:status                Xem độ sâu mọi hàng đợi (webhook, backfill, dead-letter) và cảnh báo
-  queue:redrive <webhook|backfill> [--limit N] [--dry-run]
+  queue:status                Xem độ sâu mọi hàng đợi (webhook, backfill, trích xuất, dead-letter) và cảnh báo
+  queue:redrive <webhook|backfill|extraction> [--limit N] [--dry-run]
                               Đưa job trong dead-letter về hàng đợi gốc để xử lý lại (sau khi đã sửa nguyên nhân)
+  ai:enable <tenantId>        Bật AI trích xuất cho tenant (tin trước lúc bật không tự được trích)
+  ai:disable <tenantId>       Tắt AI trích xuất cho tenant
+  extract:run <conversationId>  Chạy trích xuất cho một hội thoại ngay (đồng bộ, theo AI_MODE hiện hành)
+  extract:status              Số lần trích xuất theo trạng thái và lý do lỗi
 
 Lệnh backfill chỉ xếp việc vào hàng đợi; server (npm run dev) mới là nơi xử lý. Meta chỉ cho lấy chi
 tiết 20 tin gần nhất của mỗi hội thoại nên đây không phải là khôi phục toàn bộ lịch sử.
@@ -170,6 +177,34 @@ async function main(): Promise<number> {
         } finally {
           await boss.stop({ graceful: true, timeout: 5000 });
         }
+      }
+      case 'ai:enable':
+      case 'ai:disable': {
+        const id = args[0];
+        if (!id) throw new Error('Thiếu ID tenant.');
+        const enabled = command === 'ai:enable';
+        if (!(await setAiEnabled(db, id, enabled))) throw new Error(`Không có tenant ${id}.`);
+        console.log(enabled ? `Đã bật AI trích xuất cho tenant ${id} (chế độ ${env.AI_MODE}).` : `Đã tắt AI trích xuất cho tenant ${id}.`);
+        if (enabled && env.AI_MODE === 'live') {
+          console.log('CHÚ Ý: AI_MODE=live gửi nội dung chat ra API nước ngoài. Chỉ dùng cho khách thật sau khi kiểm tra pháp lý.');
+        }
+        return 0;
+      }
+      case 'extract:run': {
+        const id = args[0];
+        if (!id) throw new Error('Thiếu ID hội thoại.');
+        const r = await runExtraction(
+          { db, extractor: createExtractor(env), log: { info: () => undefined, warn: (o) => console.warn(JSON.stringify(o)) }, contextMessages: env.AI_CONTEXT_MESSAGES },
+          id,
+        );
+        console.log(JSON.stringify(r));
+        return r.status === 'failed' ? 2 : 0;
+      }
+      case 'extract:status': {
+        const rows = await extractionStatus(db);
+        if (rows.length === 0) console.log('Chưa có lần trích xuất nào.');
+        for (const r of rows) console.log(`${r.status}${r.failureReason ? ` (${r.failureReason})` : ''}: ${r.runs}`);
+        return 0;
       }
       default:
         console.error(`Lệnh không hợp lệ: ${command}\n\n${USAGE}`);

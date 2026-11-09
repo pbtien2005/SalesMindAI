@@ -3,7 +3,7 @@ import { buildApp, LOG_REDACT_PATHS } from '../src/app.js';
 import type { ReadinessCheck } from '../src/health.js';
 import { assessQueueHealth, startQueueMonitor, STALE_READY_SECONDS } from '../src/queue/monitor.js';
 import { ALL_QUEUES, assertQueueExists, isDeadLetter, queueOverview, redriveDeadLetter, type QueueSummary } from '../src/queue/admin.js';
-import { BACKFILL_DEAD_QUEUE, WEBHOOK_DEAD_QUEUE, WEBHOOK_QUEUE } from '../src/queue/boss.js';
+import { BACKFILL_DEAD_QUEUE, EXTRACT_DEAD_QUEUE, EXTRACT_QUEUE, WEBHOOK_DEAD_QUEUE, WEBHOOK_QUEUE } from '../src/queue/boss.js';
 
 const apps: Array<{ close: () => Promise<unknown> }> = [];
 afterEach(async () => {
@@ -191,9 +191,11 @@ describe('quản trị hàng đợi', () => {
     expect(Date.now() - t0).toBeLessThan(120 * 3); // 5 queue tuần tự sẽ mất ~600ms
   });
 
-  it('isDeadLetter nhận đúng hai queue dead-letter', () => {
+  it('isDeadLetter nhận đúng ba queue dead-letter', () => {
     expect(isDeadLetter(WEBHOOK_DEAD_QUEUE)).toBe(true);
     expect(isDeadLetter(BACKFILL_DEAD_QUEUE)).toBe(true);
+    expect(isDeadLetter(EXTRACT_DEAD_QUEUE)).toBe(true);
+    expect(isDeadLetter(EXTRACT_QUEUE)).toBe(false);
     expect(isDeadLetter(WEBHOOK_QUEUE)).toBe(false);
   });
 
@@ -283,7 +285,7 @@ describe('quản trị hàng đợi', () => {
         getQueueStats: async (name: string) => {
           calls += 1;
           await wait(150);
-          if (calls === 5) finished = true; // lượt đầu đọc đủ 5 queue (song song)
+          if (calls === ALL_QUEUES.length) finished = true; // lượt đầu đọc đủ mọi queue (song song)
           return [stats(name)];
         },
       };

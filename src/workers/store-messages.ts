@@ -34,6 +34,8 @@ export interface StoreResult {
   duplicates: number;
   /** Tin bỏ qua vì khớp một tin webhook đã có theo (hội thoại, hướng, thời điểm, nội dung) dù khác mid. */
   heuristicSkipped: number;
+  /** Hội thoại vừa nhận tin MỚI của khách có nội dung chữ (không trùng): ứng viên để AI trích xuất. */
+  customerTextConversationIds: string[];
 }
 
 export interface StoreOptions {
@@ -90,7 +92,8 @@ export async function storeInbound(
   source: 'webhook' | 'backfill',
   opts: StoreOptions = {},
 ): Promise<StoreResult> {
-  const result: StoreResult = { stored: 0, duplicates: 0, heuristicSkipped: 0 };
+  const result: StoreResult = { stored: 0, duplicates: 0, heuristicSkipped: 0, customerTextConversationIds: [] };
+  const triggers = new Set<string>();
   const interactions = opts.interactions ?? [];
   if (items.length === 0 && interactions.length === 0) return result;
 
@@ -207,10 +210,14 @@ export async function storeInbound(
         })),
       )
       .onConflictDoNothing({ target: messages.mid })
-      .returning({ id: messages.id });
+      .returning({ id: messages.id, conversationId: messages.conversationId, direction: messages.direction, text: messages.text });
     result.stored += inserted.length;
     result.duplicates += part.length - inserted.length;
+    for (const r of inserted) {
+      if (r.direction === 'inbound' && r.text !== null && r.text.trim() !== '') triggers.add(r.conversationId);
+    }
   }
+  result.customerTextConversationIds = [...triggers];
   return result;
 }
 

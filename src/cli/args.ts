@@ -26,9 +26,11 @@ function parse<T extends Record<string, { type: 'string' | 'boolean' }>>(args: s
  */
 export function parseRedriveArgs(args: string[]): { target: DeadLetterTarget; limit?: number; dryRun: boolean } {
   const { values, positionals } = parse(args, { limit: { type: 'string' }, 'dry-run': { type: 'boolean' } });
-  if (positionals.length !== 1) throw new UsageError('Cần đúng một đích: webhook hoặc backfill.');
+  if (positionals.length !== 1) throw new UsageError('Cần đúng một đích: webhook, backfill hoặc extraction.');
   const target = positionals[0];
-  if (target !== 'webhook' && target !== 'backfill') throw new UsageError(`Đích không hợp lệ "${target}": chỉ nhận webhook hoặc backfill.`);
+  if (target !== 'webhook' && target !== 'backfill' && target !== 'extraction') {
+    throw new UsageError(`Đích không hợp lệ "${target}": chỉ nhận webhook, backfill hoặc extraction.`);
+  }
 
   let limit: number | undefined;
   if (values.limit !== undefined) {

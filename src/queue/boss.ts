@@ -6,6 +6,19 @@ export const WEBHOOK_DEAD_QUEUE = 'webhook-events-dead';
 export const BACKFILL_PAGE_QUEUE = 'backfill-page';
 export const BACKFILL_CONVERSATION_QUEUE = 'backfill-conversation';
 export const BACKFILL_DEAD_QUEUE = 'backfill-dead';
+export const EXTRACT_QUEUE = 'extract-conversation';
+export const EXTRACT_DEAD_QUEUE = 'extract-conversation-dead';
+
+/** Job trích xuất: chỉ mang ID hội thoại, không có nội dung tin (worker tự đọc từ DB). */
+export interface ExtractJobData {
+  conversationId: string;
+}
+
+/** Phần mà webhook và sweeper cần: xếp việc trích xuất, không biết gì về pg-boss. */
+export interface ExtractQueue {
+  /** Trả true nếu có job mới, false nếu đã có job cùng hội thoại đang chờ (khử trùng đúng ý, không phải lỗi). */
+  enqueue(conversationId: string, delaySeconds: number): Promise<boolean>;
+}
 
 /** Dữ liệu một job: nguyên payload webhook đã qua kiểm tra chữ ký. */
 export interface WebhookJobData {
@@ -23,9 +36,24 @@ export interface BossOptions {
   queueOverrides?: QueueOptions;
   /** Ghi đè cấu hình các queue backfill (test). */
   backfillQueueOverrides?: QueueOptions;
+  /** Ghi đè cấu hình queue trích xuất (test). */
+  extractQueueOverrides?: QueueOptions;
   /** Nhận lỗi của pg-boss. Mặc định ghi stderr. */
   onError?: (err: Error) => void;
 }
+
+/**
+ * Queue trích xuất: lỗi chủ yếu là mạng hoặc giới hạn tốc độ của API AI nên retry có backoff (10 giây tăng dần
+ * tới 5 phút, 5 lần). Job không chứa nội dung tin nên giữ ngắn. Lưới an toàn cho job bị mất là sweeper.
+ */
+const EXTRACT_QUEUE_DEFAULTS: QueueOptions = {
+  retryLimit: 5,
+  retryDelay: 10,
+  retryBackoff: true,
+  retryDelayMax: 300,
+  expireInSeconds: 180,
+  deleteAfterSeconds: 24 * 3600,
+};
 
 /**
  * Cấu hình queue chính. Ta trả 200 cho Meta ngay khi job vào hàng đợi, nên Meta sẽ không gửi lại:
@@ -105,7 +133,37 @@ export async function createBoss(databaseUrl: string, opts: BossOptions = {}): P
     // hoặc job liệt kê được retry không nhân đôi job hội thoại đang chờ.
     await ensureQueue(boss, name, { ...backfillOptions, deadLetter: BACKFILL_DEAD_QUEUE, policy: 'short' });
   }
+
+  await ensureQueue(boss, EXTRACT_DEAD_QUEUE, DEAD_LETTER_OPTIONS);
+  const extractOptions: QueueOptions = { ...EXTRACT_QUEUE_DEFAULTS, ...opts.extractQueueOverrides };
+  if (!extractOptions.retryBackoff) delete extractOptions.retryDelayMax;
+  // 'short' + singletonKey: mỗi hội thoại chỉ có MỘT job đang chờ, nên nhiều tin liên tiếp chỉ ra một lần trích.
+  await ensureQueue(boss, EXTRACT_QUEUE, { ...extractOptions, deadLetter: EXTRACT_DEAD_QUEUE, policy: 'short' });
   return boss;
+}
+
+export function createExtractQueue(boss: PgBoss): ExtractQueue {
+  return {
+    async enqueue(conversationId, delaySeconds) {
+      const job: ExtractJobData = { conversationId };
+      return (await boss.send(EXTRACT_QUEUE, job, { singletonKey: conversationId, startAfter: delaySeconds })) !== null;
+    },
+  };
+}
+
+/** Đăng ký worker trích xuất. Một job một hội thoại; số job song song giữ thấp để không dồn vào API AI. */
+export async function startExtractWorker(
+  boss: PgBoss,
+  handler: (job: ExtractJobData) => Promise<void>,
+  opts: WorkerOptions & { concurrency?: number } = {},
+): Promise<void> {
+  await boss.work<ExtractJobData>(
+    EXTRACT_QUEUE,
+    { batchSize: 1, pollingIntervalSeconds: opts.pollingIntervalSeconds ?? 1, localConcurrency: opts.concurrency ?? 2 },
+    async (jobs) => {
+      for (const job of jobs) await handler(job.data);
+    },
+  );
 }
 
 export function createWebhookQueue(boss: PgBoss): WebhookQueue {
