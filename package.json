@@ -5,7 +5,7 @@
   "type": "module",
   "description": "SalesMind AI - Module 1: tiếp nhận tin nhắn từ Facebook Page",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "scripts": {
     "dev": "tsx watch --env-file=.env src/server.ts",
@@ -20,7 +20,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"

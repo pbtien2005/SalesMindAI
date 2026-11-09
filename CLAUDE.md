@@ -11,7 +11,7 @@ Nguyên tắc sản phẩm:
 **Giai đoạn hiện tại: Module 1 "Tiếp nhận tin nhắn từ Facebook Page"**: chỉ đọc và lưu tin. Chưa có AI, chưa có giao diện. Đề án gốc: `doc/` (không chép lại ở đây).
 
 ## Stack
-- Node.js 24 LTS, TypeScript, Fastify 5 (pino), Vitest
+- Node.js 26 LTS, TypeScript, Fastify 5 (pino), Vitest
 - PostgreSQL 18 (docker-compose cho dev), Drizzle ORM, hàng đợi pg-boss (trên Postgres)
 - Giao diện (giai đoạn sau): React 19 + Vite, TanStack Router/Query, shadcn/ui + Tailwind v4
 
@@ -37,7 +37,7 @@ Nguyên tắc sản phẩm:
 - `npm run build` / `npm start`: build và chạy bản production
 - `npm run db:migrate`: chạy migration Drizzle (dự kiến, làm ở mốc 2)
 
-Khi một lệnh được tạo thật, bỏ chữ "dự kiến" ở đây. Cần Node 24 (`.nvmrc`).
+Khi một lệnh được tạo thật, bỏ chữ "dự kiến" ở đây. Cần Node 26 (`.nvmrc`).
 
 ## Quy trình làm việc theo mốc
 Module 1 chia thành các mốc 0–6:
