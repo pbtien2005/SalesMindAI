@@ -5,7 +5,11 @@ import { assessQueueHealth } from '../queue/monitor.js';
 import { resubscribePages } from '../auth/resubscribe.js';
 import { createTokenCrypto } from '../crypto/token-crypto.js';
 import { GraphClient } from '../meta/graph-client.js';
-import { parseBackfillArgs, parseDecideArgs, parseRedriveArgs } from './args.js';
+import { parseBackfillArgs, parseDecideArgs, parseRedriveArgs, parseDemoSendArgs, parseDemoClockArgs } from './args.js';
+import { ensurePersonaConversation, simulateCustomerMessage, simulatePageMessage, SimError } from '../demo/actions.js';
+import { advanceClock, advanceClockTo, getNow } from '../demo/clock.js';
+import { getDemoContext, resetDemo } from '../demo/seed.js';
+import { PERSONAS, type WebhookPoster } from '../demo/simulator.js';
 import { decideProposal, listPending, ProposalError } from '../extraction/proposals.js';
 import { queueOverview, redriveDeadLetter } from '../queue/admin.js';
 import { newConnectUrl, createTenant, listTenants, tenantExists } from '../auth/tenants.js';
@@ -40,6 +44,11 @@ const USAGE = `Dùng: npm run cli -- <lệnh>
   ai:disable <tenantId>       Tắt AI trích xuất cho tenant
   extract:run <conversationId>  Chạy trích xuất cho một hội thoại ngay (đồng bộ, theo AI_MODE hiện hành)
   extract:status              Số lần trích xuất theo trạng thái và lý do lỗi
+  demo:reset                  (DEMO_MODE) Dựng lại dữ liệu demo và đặt đồng hồ về Thứ Năm 12/11/2026 09:00
+  demo:send <persona> <nội dung> [--page]
+                              (DEMO_MODE) Gửi tin giả có ký tên vào server đang chạy (persona: minh, thu, duc, ngoc, mai).
+                              --page: gửi như Lan gõ ở Page Inbox
+  demo:clock [--advance <phút>] [--to <ISO>]   (DEMO_MODE) Xem hoặc tua đồng hồ demo
   proposals:list <conversationId>   Đề xuất đang chờ của một hội thoại
   proposals:decide <proposalId> <accept|edit|dismiss> --by <tên> [--text <giá trị sửa>] [--at <ISO có múi giờ>]
                               Duyệt, sửa hoặc bỏ qua một đề xuất. Mốc thời gian mơ hồ bắt buộc có --at (ngày giờ Sale chọn)
@@ -209,6 +218,55 @@ async function main(): Promise<number> {
         if (rows.length === 0) console.log('Chưa có lần trích xuất nào.');
         for (const r of rows) console.log(`${r.status}${r.failureReason ? ` (${r.failureReason})` : ''}: ${r.runs}`);
         return 0;
+      }
+      case 'demo:reset':
+      case 'demo:send':
+      case 'demo:clock': {
+        if (!env.DEMO_MODE) throw new Error('Lệnh demo chỉ chạy khi DEMO_MODE=true trong .env.');
+        if (command === 'demo:reset') {
+          const r = await resetDemo({ db, crypto: createTokenCrypto(env.TOKEN_ENC_KEY), log: { info: () => undefined, warn: (o) => console.warn(JSON.stringify(o)) } });
+          console.log(`Đã dựng lại dữ liệu demo (tenant ${r.tenantId}). Đồng hồ demo: ${r.clockNow.toISOString()}`);
+          return 0;
+        }
+        if (command === 'demo:clock') {
+          const a = parseDemoClockArgs(args);
+          if (a.advanceMinutes !== undefined) await advanceClock(db, a.advanceMinutes);
+          else if (a.to !== undefined) await advanceClockTo(db, new Date(a.to));
+          console.log(`Đồng hồ demo: ${(await getNow(db, true)).toISOString()}`);
+          return 0;
+        }
+        const a = parseDemoSendArgs(args);
+        const ctx = await getDemoContext(db);
+        if (!ctx) throw new Error('Chưa có dữ liệu demo. Chạy: npm run cli -- demo:reset');
+        const poster: WebhookPoster = {
+          async post(rawBody, signature) {
+            const res = await fetch(`http://127.0.0.1:${env.PORT}/webhook`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', 'x-hub-signature-256': signature },
+              body: rawBody,
+            }).catch(() => {
+              throw new Error(`Không gọi được server tại cổng ${env.PORT}. Đã chạy "npm run dev" chưa?`);
+            });
+            return { status: res.status };
+          },
+        };
+        const sim = { db, poster, appSecret: env.APP_SECRET, ctx };
+        const now = await getNow(db, true);
+        try {
+          if (a.asPage) {
+            const persona = PERSONAS[a.persona];
+            if (!persona) throw new SimError(`Không có khách demo "${a.persona}". Có: ${Object.keys(PERSONAS).join(', ')}.`);
+            await simulatePageMessage(sim, await ensurePersonaConversation(db, ctx, persona), a.text, now);
+            console.log(`Đã gửi tin của Lan (Page Inbox) tới "${a.persona}" lúc ${now.toISOString()}.`);
+            return 0;
+          }
+          const r = await simulateCustomerMessage(sim, { persona: a.persona }, a.text, now);
+          console.log(`Đã gửi tin của "${a.persona}" lúc ${now.toISOString()} (hội thoại ${r.conversationId}).`);
+          return 0;
+        } catch (err) {
+          if (err instanceof SimError) throw new Error(err.message);
+          throw err;
+        }
       }
       case 'proposals:list': {
         const id = args[0];

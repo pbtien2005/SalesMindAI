@@ -160,6 +160,14 @@ Kế hoạch chi tiết: [doc/PLAN-module2.md](doc/PLAN-module2.md). Cùng quy �
 | 6 | Service duyệt đề xuất và CLI | xong | 2026-11-10 | `src/extraction/proposals.ts` (`decideProposal`, `listPending`), CLI `proposals:list`, `proposals:decide`. `tests/proposals.test.ts` 16 test (accept, edit giữ nguyên giá trị AI đề xuất, dismiss, `superseded`/đã quyết định bị từ chối, ba quyết định đồng thời chỉ một cái thắng, tenant khác, `version` tăng; `timeline` mơ hồ thiếu ngày bị từ chối cả với accept lẫn edit, ngày Sale chọn thành việc "Khách hẹn ghé xem" đúng thời điểm, sai dạng/thiếu múi giờ bị từ chối, lịch hẹn mới đóng lịch cũ). Mutation: bỏ bắt buộc chọn ngày, bỏ kiểm tra `pending`, bỏ lọc tenant đều làm test đỏ. **Giới hạn của test:** tính đúng khi đua dựa trên ba lớp độc lập (kiểm trạng thái sau khóa dòng, `FOR UPDATE`, UPDATE có điều kiện `pending`); bỏ riêng từng lớp thì lớp khác vẫn bắt, nên test không phân biệt được từng lớp một. Thêm `tests/cli-decide-args.test.ts`. |
 | 7 | Quan sát, README, review | chưa làm | | |
 
+## Demo MVP: backend (kế hoạch: [doc/PLAN-backend.md](doc/PLAN-backend.md))
+
+Các mốc B1–B4 trùng với mốc 3–6 của Module 2 ở trên. Phần dưới là phần riêng của demo.
+
+| Mốc | Nội dung | Trạng thái | Ngày | Bằng chứng |
+|---|---|---|---|---|
+| B5 | Lõi demo: đồng hồ tua được, bộ đếm bám, ngừng bám, P1, quá hạn, lịch nhắc, số liệu AI, dữ liệu nền, giả lập tin nhắn, CLI `demo:*` | xong | 2026-11-10 | `src/demo/{clock,seed,simulator,actions}.ts`, `src/followup/{followup,overview}.ts`. `tests/demo-core.test.ts` 23 test và `tests/demo-actions.test.ts` 7 test. Đúng trạng thái 09:00 Thứ Năm: P1 = chị Thu, quá hạn = anh Đức và chị Ngọc, cô Mai bám 4/5, số liệu AI = 0; Thứ Sáu 09:30: cô Mai đủ 5/5 (đề xuất ngừng). Ranh giới: bám 0 → 24 giờ → 1, tối đa 5; P1 chỉ khi chờ **quá** 15 phút (đúng 15 chưa tính). Giả lập đi qua đúng `/webhook` có chữ ký (sai khóa thì 403, không lưu gì); tin của Lan lưu là echo `page_inbox`. `demo:reset` chạy lại nhiều lần cho cùng kết quả và chỉ đụng tenant demo. Mutation: ngưỡng P1, tín hiệu cũ không được ở lại (**sống sót ở lần đầu vì test sai**: P1 tắt do ngưỡng 15 phút chứ không do tín hiệu cũ; đã sửa test, mutation giờ bị bắt), chu kỳ 24 giờ, khách phản hồi thì reset. **Lệch kịch bản:** cảnh 0 kịch bản liệt kê Lịch nhắc chỉ có anh Đức và chị Ngọc, nhưng cô Mai (bám 4/5) cũng hiện dòng cam ở đó; cần sửa kịch bản. |
+
 ## Điểm chưa xác minh của Module 2
 
 | # | Điểm | Trạng thái | Ghi chú |

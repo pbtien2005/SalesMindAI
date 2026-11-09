@@ -59,6 +59,31 @@ export function parseDecideArgs(args: string[]): {
   return { proposalId, action, by: values.by, ...(values.text !== undefined ? { text: values.text } : {}), ...(values.at !== undefined ? { at: values.at } : {}) };
 }
 
+/** `demo:send <persona> <nội dung...> [--page]`: `--page` gửi như Lan ở Page Inbox (persona là khách nhận). */
+export function parseDemoSendArgs(args: string[]): { persona: string; text: string; asPage: boolean } {
+  const { values, positionals } = parse(args, { page: { type: 'boolean' } });
+  const [persona, ...rest] = positionals;
+  if (!persona || rest.length === 0) throw new UsageError('Dùng: demo:send <persona> <nội dung> [--page].');
+  return { persona, text: rest.join(' '), asPage: values.page === true };
+}
+
+/** `demo:clock [--advance <phút>] [--to <ISO có múi giờ>]`: không tham số thì chỉ in giờ demo. */
+export function parseDemoClockArgs(args: string[]): { advanceMinutes?: number; to?: string } {
+  const { values, positionals } = parse(args, { advance: { type: 'string' }, to: { type: 'string' } });
+  if (positionals.length > 0) throw new UsageError('demo:clock không nhận tham số vị trí.');
+  if (values.advance !== undefined && values.to !== undefined) throw new UsageError('Chỉ dùng một trong --advance hoặc --to.');
+  if (values.advance !== undefined) {
+    const n = Number(values.advance);
+    if (!Number.isFinite(n) || n <= 0) throw new UsageError('--advance phải là số phút dương.');
+    return { advanceMinutes: n };
+  }
+  if (values.to !== undefined) {
+    if (!/[zZ]|[+-]\d{2}:\d{2}$/.test(values.to) || Number.isNaN(Date.parse(values.to))) throw new UsageError('--to phải là ISO 8601 có múi giờ, ví dụ 2026-11-13T09:30:00+07:00.');
+    return { to: values.to };
+  }
+  return {};
+}
+
 /** `backfill [<fbPageId>] [--force]`. */
 export function parseBackfillArgs(args: string[]): { fbPageId?: string; force: boolean } {
   const { values, positionals } = parse(args, { force: { type: 'boolean' } });
