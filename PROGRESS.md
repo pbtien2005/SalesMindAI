@@ -153,7 +153,7 @@ Kế hoạch chi tiết: [doc/PLAN-module2.md](doc/PLAN-module2.md). Cùng quy �
 |---|---|---|---|---|
 | 0 | Tiền đề: thay đổi echo của Module 1 (`direction`, `sender_kind`, migration 0002) đã commit và test đạt | xong | 2026-11-10 | Thay đổi echo đã commit ở `25e21bb`. Trên `main`: `npm run typecheck` sạch; `npm test` **374/374 đạt** (19 file, 97,7 giây, một lần chạy) trên Postgres 18 của Docker. Trước đó (2026-11-09) mốc này ghi "bỏ qua" vì phần echo chưa commit. |
 | 1 | Kế hoạch: tài liệu, cập nhật CLAUDE.md, xác minh API Anthropic | xong | 2026-11-09 | [doc/PLAN-module2.md](doc/PLAN-module2.md); mục "Điểm API Anthropic đã xác minh" trong tài liệu đó đối chiếu bằng tài liệu skill `claude-api` và gói `@anthropic-ai/sdk@1.6.0` tải từ npm (đọc `.d.ts`, `.js`). Chưa chạy code nào, chưa gọi API thật. |
-| 2 | DB: tenants.ai_extraction_enabled, extraction_runs, proposals, profile_fields | chưa làm | | |
+| 2 | DB: tenants.ai_extraction_enabled, extraction_runs, proposals, profile_fields (+ cho demo: tasks, followup_state, demo_clock, conversations.display_name) | xong | 2026-11-10 | Migration `0003_hard_amphibian` (đã sửa tay thứ tự: UNIQUE `conversations_id_tenant_unique` phải đứng trước các khóa ngoại ghép dùng nó; drizzle-kit sinh sai thứ tự). `tests/db-module2.test.ts` 7 test: AI mặc định tắt, một đề xuất pending mỗi (hội thoại, trường), khóa idempotency run, khóa ngoại ghép tenant (đề xuất, run, việc, hồ sơ), hồ sơ một dòng mỗi trường. Cùng `tests/db.test.ts`: 27/27 đạt. |
 | 3 | Công cụ tất định: kiểm chứng câu gốc, SĐT, biểu thức thời gian | chưa làm | | |
 | 4 | Extractor (Anthropic) và đánh giá | chưa làm | | |
 | 5 | Pipeline: queue, debounce, sweeper, worker | chưa làm | | |

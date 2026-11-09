@@ -22,6 +22,13 @@
       "when": 1794234415017,
       "tag": "0002_echoes_and_interactions",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794245171261,
+      "tag": "0003_hard_amphibian",
+      "breakpoints": true
     }
   ]
 }

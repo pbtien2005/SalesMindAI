@@ -1,13 +1,18 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
+  boolean,
   foreignKey,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -26,9 +31,28 @@ export const messageDirection = pgEnum('message_direction', ['inbound', 'outboun
  */
 export const senderKind = pgEnum('sender_kind', ['customer', 'page_app', 'page_inbox', 'page_other', 'page_unknown']);
 
+/** Trường AI có thể đề xuất (Module 2). */
+export const proposalField = pgEnum('proposal_field', [
+  'customer_name',
+  'phone',
+  'address',
+  'product_interest',
+  'quantity',
+  'budget',
+  'timeline',
+  'intent',
+  'message_purpose',
+]);
+/** `pending` chờ Sale; `accepted` duyệt nguyên văn; `edited` Sale sửa rồi duyệt; `dismissed` bỏ qua; `superseded` bị đề xuất mới thay. */
+export const proposalStatus = pgEnum('proposal_status', ['pending', 'accepted', 'edited', 'dismissed', 'superseded']);
+export const extractionRunStatus = pgEnum('extraction_run_status', ['succeeded', 'failed', 'skipped']);
+
 export const tenants = pgTable('tenants', {
   id: id(),
   name: text('name').notNull(),
+  /** AI trích xuất bật theo từng tenant, mặc định TẮT (xem CLAUDE.md: kiểm tra pháp lý trước khi bật cho khách thật). */
+  aiExtractionEnabled: boolean('ai_extraction_enabled').notNull().default(false),
+  aiEnabledAt: timestamp('ai_enabled_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
 
@@ -72,6 +96,8 @@ export const conversations = pgTable(
     pageId: uuid('page_id').notNull(),
     /** Page-scoped ID của khách. */
     psid: text('psid').notNull(),
+    /** Tên hiển thị trong giao diện (webhook Messenger không kèm tên). Chỉ do demo hoặc nhân viên đặt. */
+    displayName: text('display_name'),
     /** Thời điểm tin mới nhất theo sent_at, mọi hướng. Cập nhật bằng GREATEST() nên tin đến sai thứ tự không làm lùi. */
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
     /**
@@ -87,6 +113,7 @@ export const conversations = pgTable(
   (t) => [
     unique('conversations_page_psid_unique').on(t.pageId, t.psid),
     unique('conversations_id_page_tenant_unique').on(t.id, t.pageId, t.tenantId),
+    unique('conversations_id_tenant_unique').on(t.id, t.tenantId),
     foreignKey({
       name: 'conversations_page_tenant_fk',
       columns: [t.pageId, t.tenantId],
@@ -186,7 +213,162 @@ export const oauthStates = pgTable(
   (t) => [index('oauth_states_tenant_idx').on(t.tenantId)],
 );
 
+/** Một lần AI đọc một hội thoại. UNIQUE (hội thoại, tin cuối, phiên bản prompt) là khóa idempotency. */
+export const extractionRuns = pgTable(
+  'extraction_runs',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id').notNull(),
+    conversationId: uuid('conversation_id').notNull(),
+    /** Tin của khách mới nhất đã được đọc. */
+    upToMessageId: uuid('up_to_message_id')
+      .notNull()
+      .references(() => messages.id),
+    promptVersion: text('prompt_version').notNull(),
+    model: text('model').notNull(),
+    status: extractionRunStatus('status').notNull(),
+    /** `refusal` | `max_tokens` | `invalid_output` | `provider_error`; chỉ có khi status = failed. */
+    failureReason: text('failure_reason'),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
+    fieldsProposed: integer('fields_proposed').notNull().default(0),
+    /** Số trường bị loại vì câu gốc không kiểm chứng được. */
+    fieldsRejected: integer('fields_rejected').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('extraction_runs_idempotency').on(t.conversationId, t.upToMessageId, t.promptVersion),
+    unique('extraction_runs_id_tenant_unique').on(t.id, t.tenantId),
+    foreignKey({
+      name: 'extraction_runs_conversation_tenant_fk',
+      columns: [t.conversationId, t.tenantId],
+      foreignColumns: [conversations.id, conversations.tenantId],
+    }),
+    index('extraction_runs_conversation_idx').on(t.conversationId, t.createdAt),
+  ],
+);
+
+/**
+ * Đề xuất của AI. `evidence` là chuỗi con ĐÃ KIỂM CHỨNG trong tin khách đã lưu
+ * (`[{ messageId, start, end, text }]`), không phải chuỗi do mô hình viết ra.
+ * Mỗi (hội thoại, trường) chỉ có một đề xuất `pending`.
+ */
+export const proposals = pgTable(
+  'proposals',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id').notNull(),
+    conversationId: uuid('conversation_id').notNull(),
+    runId: uuid('run_id').notNull(),
+    field: proposalField('field').notNull(),
+    value: jsonb('value').notNull(),
+    evidence: jsonb('evidence').notNull().default(sql`'[]'::jsonb`),
+    /** Ví dụ `needs_clarification` (mốc thời gian mơ hồ: Sale phải chọn ngày). */
+    flags: text('flags').array().notNull().default(sql`'{}'::text[]`),
+    status: proposalStatus('status').notNull().default('pending'),
+    decidedValue: jsonb('decided_value'),
+    decidedBy: text('decided_by'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('proposals_one_pending_per_field')
+      .on(t.conversationId, t.field)
+      .where(sql`${t.status} = 'pending'`),
+    unique('proposals_id_tenant_unique').on(t.id, t.tenantId),
+    foreignKey({
+      name: 'proposals_conversation_tenant_fk',
+      columns: [t.conversationId, t.tenantId],
+      foreignColumns: [conversations.id, conversations.tenantId],
+    }),
+    foreignKey({
+      name: 'proposals_run_tenant_fk',
+      columns: [t.runId, t.tenantId],
+      foreignColumns: [extractionRuns.id, extractionRuns.tenantId],
+    }),
+    index('proposals_conversation_idx').on(t.conversationId, t.status),
+    index('proposals_tenant_status_idx').on(t.tenantId, t.status),
+  ],
+);
+
+/** Dữ liệu ĐÃ DUYỆT. Chỉ code duyệt đề xuất mới được ghi vào đây. */
+export const profileFields = pgTable(
+  'profile_fields',
+  {
+    conversationId: uuid('conversation_id').notNull(),
+    field: proposalField('field').notNull(),
+    tenantId: uuid('tenant_id').notNull(),
+    value: jsonb('value').notNull(),
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => proposals.id),
+    version: integer('version').notNull().default(1),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.conversationId, t.field] }),
+    foreignKey({
+      name: 'profile_fields_conversation_tenant_fk',
+      columns: [t.conversationId, t.tenantId],
+      foreignColumns: [conversations.id, conversations.tenantId],
+    }),
+  ],
+);
+
+/** Việc cần làm của Sale (gọi lại, nhắc thanh toán, khách hẹn ghé...). `source`: seed, appointment, manual. */
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id').notNull(),
+    conversationId: uuid('conversation_id').notNull(),
+    title: text('title').notNull(),
+    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    source: text('source').notNull().default('manual'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'tasks_conversation_tenant_fk',
+      columns: [t.conversationId, t.tenantId],
+      foreignColumns: [conversations.id, conversations.tenantId],
+    }),
+    index('tasks_tenant_due_idx').on(t.tenantId, t.dueAt),
+  ],
+);
+
+/** Quyết định NGỪNG BÁM của Sale. Số lần bám tính khi đọc từ mốc thời gian của hội thoại, không lưu. */
+export const followupState = pgTable(
+  'followup_state',
+  {
+    conversationId: uuid('conversation_id').primaryKey(),
+    tenantId: uuid('tenant_id').notNull(),
+    stoppedAt: timestamp('stopped_at', { withTimezone: true }).notNull(),
+    stoppedBy: text('stopped_by').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'followup_state_conversation_tenant_fk',
+      columns: [t.conversationId, t.tenantId],
+      foreignColumns: [conversations.id, conversations.tenantId],
+    }),
+  ],
+);
+
+/** Đồng hồ demo: một dòng, `now = giờ thật + offset_ms`. Chỉ được dùng khi DEMO_MODE=true. */
+export const demoClock = pgTable('demo_clock', {
+  id: integer('id').primaryKey().default(1),
+  offsetMs: bigint('offset_ms', { mode: 'number' }).notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Tenant = typeof tenants.$inferSelect;
+export type ExtractionRun = typeof extractionRuns.$inferSelect;
+export type Proposal = typeof proposals.$inferSelect;
+export type ProfileField = typeof profileFields.$inferSelect;
+export type Task = typeof tasks.$inferSelect;
 export type Page = typeof pages.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
