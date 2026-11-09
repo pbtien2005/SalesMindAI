@@ -48,9 +48,10 @@ export function safeRequestSerializer(req: FastifyRequest) {
 export const LOG_REDACT_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
+  'req.headers["x-api-key"]',
   'req.headers["x-hub-signature-256"]',
   'res.headers["set-cookie"]',
-  ...['token', 'accessToken', 'access_token', 'tokenEnc', 'client_secret', 'appSecret', 'password', 'text'].flatMap((k) => [k, `*.${k}`]),
+  ...['token', 'accessToken', 'access_token', 'tokenEnc', 'client_secret', 'appSecret', 'apiKey', 'ANTHROPIC_API_KEY', 'password', 'text'].flatMap((k) => [k, `*.${k}`]),
 ];
 
 /** `x-request-id` do client gửi chỉ được tin khi đúng dạng an toàn (không có xuống dòng, độ dài hợp lý). */

@@ -67,13 +67,49 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+
+  /**
+   * Chế độ trích xuất AI. `offline` (mặc định): luật tất định, không gọi mạng. `live`: gọi Claude, cần
+   * `ANTHROPIC_API_KEY` và gửi nội dung chat ra API nước ngoài, nên PHẢI đặt tường minh (không tự bật khi có khóa).
+   */
+  AI_MODE: z.enum(['offline', 'live']).default('offline'),
+  // `KEY=` rỗng nghĩa là "không đặt".
+  ANTHROPIC_API_KEY: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? v : undefined)),
+  AI_MODEL: z.string().min(1).default('claude-haiku-5-5'),
+  /** Chờ bấy nhiêu giây sau tin khách mới nhất rồi mới trích (gom nhiều tin liên tiếp). Demo đặt 3. */
+  AI_DEBOUNCE_SECONDS: z.coerce.number().int().min(0).max(3600).default(30),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(30_000),
+  /** Số tin gần nhất (cả hai chiều) đưa cho AI đọc. */
+  AI_CONTEXT_MESSAGES: z.coerce.number().int().min(1).max(200).default(30),
+
+  /**
+   * Bật API demo (`/api/*`), đồng hồ tua được và công cụ giả lập. KHÔNG có đăng nhập: chỉ để chạy demo trên máy
+   * của bạn. Bị từ chối khi NODE_ENV=production.
+   */
+  DEMO_MODE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+});
+
+const envSchemaChecked = envSchema.superRefine((v, ctx) => {
+  if (v.DEMO_MODE && v.NODE_ENV === 'production') {
+    ctx.addIssue({ code: 'custom', path: ['DEMO_MODE'], message: 'DEMO_MODE=true không được dùng cùng NODE_ENV=production (API demo không có đăng nhập)' });
+  }
+  if (v.AI_MODE === 'live' && !v.ANTHROPIC_API_KEY) {
+    ctx.addIssue({ code: 'custom', path: ['ANTHROPIC_API_KEY'], message: 'AI_MODE=live cần ANTHROPIC_API_KEY' });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;
 
 /** Đọc và kiểm tra cấu hình. Thiếu hoặc sai thì ném lỗi, không in giá trị bí mật. */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const result = envSchema.safeParse(source);
+  const result = envSchemaChecked.safeParse(source);
   if (!result.success) {
     const problems = result.error.issues
       .map((i) => `- ${i.path.join('.') || '(root)'}: ${i.message}`)
