@@ -5,7 +5,9 @@ import Fastify, {
   type FastifyRequest,
   type FastifyServerOptions,
 } from 'fastify';
+import { apiRoutes, type ApiOptions } from './api/routes.js';
 import { oauthRoutes, type OAuthRouteOptions } from './auth/oauth-routes.js';
+import type { WebhookPoster } from './demo/simulator.js';
 import { healthRoutes, type ReadinessCheck } from './health.js';
 import type { WebhookQueue } from './queue/boss.js';
 import { webhookRoutes } from './webhook/routes.js';
@@ -20,6 +22,11 @@ export interface AppDeps {
   /** Các kiểm tra cho `/readyz` (ví dụ DB, hàng đợi). Không có thì `/readyz` luôn trả sẵn sàng. */
   readiness?: ReadinessCheck[];
   readinessTimeoutMs?: number;
+  /**
+   * Có thì bật API demo `/api/*` (KHÔNG có đăng nhập; chỉ dùng khi DEMO_MODE=true, xem `src/api/routes.ts`).
+   * `appSecret` dùng chung với webhook để ký tin giả lập.
+   */
+  api?: Pick<ApiOptions, 'db' | 'crypto' | 'log'>;
 }
 
 /**
@@ -114,6 +121,21 @@ export function buildApp(opts: FastifyServerOptions = {}, deps?: AppDeps): Fasti
       ...(deps.enqueueTimeoutMs ? { enqueueTimeoutMs: deps.enqueueTimeoutMs } : {}),
     });
     if (deps.oauth) void app.register(oauthRoutes, deps.oauth);
+    if (deps.api) {
+      // Tin giả lập đi vào đúng POST /webhook của chính server này (có ký chữ ký, qua hàng đợi và worker).
+      const poster: WebhookPoster = {
+        async post(rawBody, signature) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/webhook',
+            headers: { 'content-type': 'application/json', 'x-hub-signature-256': signature },
+            payload: rawBody,
+          });
+          return { status: res.statusCode };
+        },
+      };
+      void app.register(apiRoutes, { ...deps.api, appSecret: deps.appSecret, poster });
+    }
   }
 
   return app;

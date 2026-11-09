@@ -54,6 +54,8 @@ const app = buildApp(
       crypto,
       publicBaseUrl: env.PUBLIC_BASE_URL,
     },
+    // API demo chỉ tồn tại khi DEMO_MODE=true (không có đăng nhập).
+    ...(env.DEMO_MODE ? { api: { db: dbHandle.db, crypto, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } } } : {}),
   },
 );
 
@@ -89,7 +91,9 @@ if (!loopback && !env.TRUST_PROXY) {
 }
 
 try {
-  await app.listen({ port: env.PORT, host: '0.0.0.0' });
+  // API demo không có đăng nhập: ở DEMO_MODE chỉ nghe localhost (tunnel tới localhost vẫn nhận được webhook).
+  await app.listen({ port: env.PORT, host: env.DEMO_MODE ? '127.0.0.1' : '0.0.0.0' });
+  if (env.DEMO_MODE) app.log.warn('DEMO_MODE=true: API demo /api/* đang bật, KHÔNG có đăng nhập, chỉ nghe 127.0.0.1. Không dùng cho dữ liệu khách thật.');
 } catch (err) {
   app.log.error({ err }, 'không mở được cổng');
   await shutdown('lỗi khởi động', 1);
