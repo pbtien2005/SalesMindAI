@@ -22,3 +22,4 @@ pgdata/
 Thumbs.db
 *.log
 .vscode/
+.vitest/

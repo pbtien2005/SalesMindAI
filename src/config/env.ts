@@ -1,12 +1,18 @@
 import { z } from 'zod';
+import { parseKey } from '../crypto/token-crypto.js';
 
-/** Khóa AES-256-GCM: base64 giải ra đúng 32 byte. */
-const tokenEncKey = z
-  .string()
-  .min(1)
-  .refine((v) => Buffer.from(v, 'base64').length === 32, {
-    message: 'TOKEN_ENC_KEY phải là base64 của đúng 32 byte',
-  });
+/** Khóa AES-256-GCM: base64 chuẩn của đúng 32 byte (kiểm tra chặt, dùng chung với token-crypto). */
+const tokenEncKey = z.string().refine(
+  (v) => {
+    try {
+      parseKey(v);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: 'TOKEN_ENC_KEY phải là base64 chuẩn của đúng 32 byte' },
+);
 
 const envSchema = z.object({
   APP_SECRET: z.string().min(1),

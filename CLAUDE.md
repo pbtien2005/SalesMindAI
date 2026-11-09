@@ -30,12 +30,15 @@ Nguyên tắc sản phẩm:
 - `code-review`: chạy sau mỗi mốc lớn, trước khi commit.
 
 ## Lệnh chạy
-- `docker compose up -d`: bật Postgres 18 dev (DB `salesmind` và `salesmind_test`)
+- `docker compose up -d`: bật Postgres 18 dev (DB `salesmind` và `salesmind_test`), cổng **5433** (tránh đụng PostgreSQL cài sẵn trên máy, thường chiếm 5432)
 - `npm run dev`: chạy server, đọc `.env` (sao chép từ `.env.example`)
 - `npm test`: chạy Vitest
 - `npm run typecheck`: kiểm tra kiểu TypeScript
 - `npm run build` / `npm start`: build và chạy bản production
-- `npm run db:migrate`: chạy migration Drizzle (dự kiến, làm ở mốc 2)
+- `npm run db:generate`: sinh migration từ `src/db/schema.ts` (không cần kết nối DB)
+- `npm run db:migrate`: áp migration lên `DATABASE_URL` (đọc `.env`)
+
+Test DB chạy trên `salesmind_test` (tên phải kết thúc bằng `_test`, test xóa sạch schema đó mỗi lần chạy) nên cần Postgres đang chạy.
 
 Khi một lệnh được tạo thật, bỏ chữ "dự kiến" ở đây. Cần Node 26 (`.nvmrc`).
 
