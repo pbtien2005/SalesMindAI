@@ -9,8 +9,26 @@ export const LOGIN_SCOPES = [
   'pages_read_engagement',
 ] as const;
 
-/** Field webhook đăng ký cho Page. Không đăng ký `message_echoes`: module này không cần tin của Page. */
-export const SUBSCRIBED_FIELDS = ['messages'] as const;
+/**
+ * Field webhook đăng ký cho Page (đã xác minh với tài liệu Meta: cả 7 tên đều có trong enum
+ * `subscribed_fields`). Theo báo cáo nghiên cứu:
+ * - `message_echoes`: tin do Page gửi, kể cả nhân viên gõ ở Page Inbox. Messenger gửi echo qua field riêng,
+ *   không qua `messages`; thiếu nó thì mọi câu trả lời của nhân viên vô hình trong DB.
+ * - `message_reactions`, `messaging_postbacks`, `messaging_referrals`: hành động của khách mở lại cửa sổ
+ *   nhắn tin (cập nhật `last_user_interaction_at`).
+ * - `standby`: sự kiện khi app KHÔNG giữ thread (Handover Protocol); thiếu nó thì mất tin trong trường hợp đó.
+ * - `messaging_policy_enforcement`: Meta cảnh báo hoặc khóa khả năng gửi tin của Page.
+ * Mọi field phải đăng ký ở CẢ cấp App (Dashboard) lẫn cấp Page (hàm `subscribePage`) thì Meta mới gửi.
+ */
+export const SUBSCRIBED_FIELDS = [
+  'messages',
+  'message_echoes',
+  'message_reactions',
+  'messaging_postbacks',
+  'messaging_referrals',
+  'standby',
+  'messaging_policy_enforcement',
+] as const;
 
 /** Lỗi gọi Graph API. Thông báo đã loại mọi token và secret đã dùng trong request. */
 export class GraphApiError extends Error {
@@ -99,6 +117,8 @@ const messageResponse = z.object({
   id: z.string().min(1),
   created_time: z.string(),
   from: z.object({ id: z.string().min(1) }).optional(),
+  // Người nhận. Cần để biết KHÁCH nào khi tin do Page gửi (khi đó `from` là Page).
+  to: z.object({ data: z.array(z.object({ id: z.string().min(1) })) }).optional(),
   message: z.string().optional(),
 });
 
@@ -113,6 +133,8 @@ export interface GraphMessage {
   createdAt: Date;
   /** ID người gửi (PSID của khách, hoặc ID Page nếu là tin do Page gửi). */
   fromId: string | null;
+  /** ID người nhận đầu tiên (PSID của khách khi tin do Page gửi). */
+  toId: string | null;
   text: string | null;
 }
 
@@ -282,13 +304,13 @@ export class GraphClient {
    */
   async getMessage(pageToken: string, messageId: string): Promise<GraphMessage> {
     const raw = await this.#request('GET', encodeURIComponent(messageId), {
-      params: { fields: 'id,created_time,from,message' },
+      params: { fields: 'id,created_time,from,to,message' },
       accessToken: pageToken,
     });
     const m = parseBody(messageResponse, raw, 'message');
     const createdAt = parseGraphTime(m.created_time);
     if (!createdAt) throw new GraphApiError('Phản hồi của Meta không đúng dạng (message.created_time).', 200, null, null, null);
-    return { id: m.id, createdAt, fromId: m.from?.id ?? null, text: m.message ?? null };
+    return { id: m.id, createdAt, fromId: m.from?.id ?? null, toId: m.to?.data[0]?.id ?? null, text: m.message ?? null };
   }
 
   /** Đăng ký app nhận webhook của Page. Cần Page token và quyền `pages_manage_metadata`. */

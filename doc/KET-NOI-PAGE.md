@@ -14,7 +14,7 @@ Tên menu trong Meta App Dashboard hay đổi. Nếu tên ở đây khác giao d
 4. **Khai báo trong Meta App Dashboard:**
    - **Valid OAuth Redirect URIs** (Facebook Login > Settings): đúng chuỗi `PUBLIC_BASE_URL/auth/facebook/callback`.
    - **Webhooks** > đối tượng **Page**: Callback URL `PUBLIC_BASE_URL/webhook`; Verify Token là giá trị `VERIFY_TOKEN` trong `.env`. Bấm Verify, phải thành công (nếu lỗi, xem log server).
-   - **Đăng ký field `messages` ở cấp App** (cùng chỗ Webhooks, bấm Subscribe cho `messages`). Meta chỉ gửi webhook khi field được đăng ký ở **cả cấp App lẫn cấp Page**. Cấp Page do server tự làm khi kết nối; cấp App phải làm tay.
+   - **Đăng ký 7 field ở cấp App** (cùng chỗ Webhooks, bấm Subscribe cho từng field): `messages`, `message_echoes`, `message_reactions`, `messaging_postbacks`, `messaging_referrals`, `standby`, `messaging_policy_enforcement`. Meta chỉ gửi webhook khi field được đăng ký ở **cả cấp App lẫn cấp Page**. Cấp Page do server tự làm khi kết nối; cấp App phải làm tay. **Thiếu `message_echoes` thì tin nhân viên gõ ở Page Inbox không bao giờ vào DB.**
 5. **Tài khoản:** người đăng nhập Facebook phải quản lý Page, và (khi app còn ở chế độ Development) phải có vai trò admin, developer hoặc tester của app. Người nhắn tin thử cũng vậy.
 
 ## B. Kết nối Page
@@ -44,8 +44,38 @@ docker exec salesmind-postgres psql -U salesmind -d salesmind -c "select mid, te
 Kiểm tra:
 - Có dòng mới, `source = webhook`, `text` đúng (thử cả tiếng Việt có dấu và emoji).
 - **`sent_at` khớp giờ bạn vừa nhắn.** Mã giả định `timestamp` của Meta là mili giây; nếu sai bạn sẽ thấy năm 1970 hoặc năm rất xa. Đây là điều cần xác nhận nhất.
-- Trả lời tin đó từ hộp thư của Page: **không** tạo thêm dòng nào (tin của Page bị bỏ).
+- **Trả lời tin đó từ hộp thư của Page (Page Inbox)**: phải có thêm một dòng `direction = outbound`, `sender_kind = page_inbox`, cột `app_id` có giá trị. Xem mục C1 bên dưới.
 - Gửi một ảnh: dòng có `text` rỗng và cột `attachments` chứa metadata.
+
+## C1. Thử tin của Page (echo): điều báo cáo nghiên cứu yêu cầu thử trước khi tin vào
+
+Báo cáo nghiên cứu chỉ ra rằng đây là điểm quan trọng nhất và có ba chỗ tài liệu Meta chưa nói rõ. Thử lần lượt, mỗi lần trả lời một tin khác nhau vào cùng một cuộc trò chuyện:
+
+1. Trả lời từ **Page Inbox** (facebook.com, hộp thư của Page).
+2. Trả lời từ **Meta Business Suite**.
+3. Trả lời từ **app Pages trên điện thoại**.
+
+Sau mỗi lần:
+
+```
+docker exec salesmind-postgres psql -U salesmind -d salesmind -c "select direction, sender_kind, app_id, left(text,30) as text, sent_at from messages order by sent_at desc limit 5"
+```
+
+Cần ghi lại và báo cho tôi:
+- **Cả ba cách có tạo echo không?** (tài liệu chỉ nhắc Page Inbox; Business Suite và app điện thoại chưa được tài liệu nói tới). Nếu cách nào không có dòng mới thì tin đó vô hình với hệ thống.
+- **`app_id` thật của từng cách.** Tài liệu Meta ghi Page Inbox là `26390203743090` (14 chữ số), giá trị thường dùng là `263902037430900` (15 chữ số); mặc định mã chấp nhận cả hai. Nếu bạn thấy giá trị khác, điền vào `PAGE_INBOX_APP_IDS` trong `.env` (và nếu Business Suite hay app điện thoại có `app_id` riêng, báo tôi để phân loại).
+- **`sender_kind`**: Page Inbox phải ra `page_inbox`. Cách nào ra `page_other` hoặc `page_unknown` là `app_id` chưa nhận diện được.
+- **Không có dòng trùng** nếu cùng một tin đến qua cả `messages` và `message_echoes` (cùng `mid` thì chỉ một dòng).
+
+Thử thêm **tương tác của khách** (cho `last_user_interaction_at`): thả cảm xúc vào một tin của Page, bấm nút Get Started nếu Page có, rồi:
+
+```
+docker exec salesmind-postgres psql -U salesmind -d salesmind -c "select psid, last_message_at, last_user_interaction_at, last_page_message_at from conversations"
+```
+
+Mong đợi: thả cảm xúc làm `last_user_interaction_at` tăng nhưng `last_message_at` không đổi; tin Page trả lời làm `last_page_message_at` tăng nhưng `last_user_interaction_at` không đổi.
+
+Nếu Page đã được kết nối **trước khi** danh sách field được mở rộng (chỉ đăng ký `messages`), chạy một lần `npm run cli -- pages:resubscribe` để đăng ký lại các field mới mà không cần kết nối lại.
 
 ## C2. Thử backfill (lấy lại tin cũ)
 
@@ -86,4 +116,5 @@ Ghi lại để bạn biết kết quả nào là "xác nhận" và kết quả 
 - Có cần `business_management` hay `config_id` cho app của bạn không.
 - `code` của OAuth có dùng được một lần không (tài liệu không nói).
 - Hành vi ở chế độ Development với tài khoản tester.
+- **Echo:** Business Suite và app Pages trên điện thoại có tạo echo không; `app_id` thật của từng cách (mục C1). Cấu trúc payload thật của `messaging_postbacks` và `messaging_referrals` (mã chỉ cần biết khóa `postback`/`referral` có mặt và người gửi là khách). `messages` có kèm echo hay không (mã xử lý cả hai đường như nhau).
 - Với backfill: `id` tin có trùng `mid` webhook không; thứ tự và cách phân trang của danh sách tin; mã lỗi khi bị giới hạn tốc độ và khi tin quá cũ.

@@ -1,10 +1,10 @@
-import { asc } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import * as schema from '../src/db/schema.js';
-import { conversations, messages, pages, tenants } from '../src/db/schema.js';
+import { conversations, messages, pagePolicyEvents, pages, tenants } from '../src/db/schema.js';
 import {
   createBoss,
   createWebhookQueue,
@@ -16,7 +16,19 @@ import {
 import { redriveDeadLetter } from '../src/queue/admin.js';
 import { processWebhookPayload, UnknownPageError } from '../src/workers/process-webhook.js';
 import { getTestDatabaseUrl, openTestDb, truncateAll } from './helpers/test-db.js';
-import { APP_SECRET, messageEvent, PAGE_ID, PSID, sign, VERIFY_TOKEN, webhookPayload } from './helpers/webhook.js';
+import {
+  APP_SECRET,
+  messageEvent,
+  PAGE_ID,
+  policyEvent,
+  postbackEvent,
+  PSID,
+  reactionEvent,
+  referralEvent,
+  sign,
+  VERIFY_TOKEN,
+  webhookPayload,
+} from './helpers/webhook.js';
 
 const handle = openTestDb();
 const { db } = handle;
@@ -32,8 +44,11 @@ let finished = 0; // số job đã chạy xong (kể cả lỗi) để test bi�
 /** Kết quả từng lần worker chạy, để test kiểm tra việc khử trùng thật sự xảy ra (chứ không chỉ DB chặn). */
 let runs: Array<{ stored: number; duplicates: number }>;
 
+/** App của ta và Page Inbox, để phân loại tin do Page gửi. */
+const SENDER = { ownAppId: 'OWN_APP_1', pageInboxAppIds: ['263902037430900'] };
+
 const realWork = async (data: WebhookJobData) => {
-  const s = await processWebhookPayload(db, data.payload, app.log);
+  const s = await processWebhookPayload(db, data.payload, app.log, { sender: SENDER });
   runs.push({ stored: s.stored, duplicates: s.duplicates });
 };
 
@@ -129,16 +144,22 @@ describe('webhook → hàng đợi → worker → DB', () => {
     expect(finished).toBe(3);
   });
 
-  it('bỏ tin do Page gửi (is_echo), chỉ lưu tin của khách', async () => {
+  it('tin của Page (echo) được LƯU như tin outbound, cạnh tin của khách trong cùng hội thoại', async () => {
     await send(
       webhookPayload([
-        messageEvent({ mid: 'in', text: 'khách hỏi' }),
-        messageEvent({ mid: 'out', text: 'sale trả lời', isEcho: true }),
+        messageEvent({ mid: 'in', text: 'khách hỏi', timestamp: 1000 }),
+        messageEvent({ mid: 'out', text: 'sale trả lời', isEcho: true, appId: '263902037430900', timestamp: 2000 }),
       ]),
     );
     await waitJobs(1);
-    const rows = await db.select().from(messages);
-    expect(rows.map((r) => r.mid)).toEqual(['in']);
+    const rows = await db.select().from(messages).orderBy(asc(messages.sentAt));
+    expect(rows.map((r) => [r.mid, r.direction, r.senderKind])).toEqual([
+      ['in', 'inbound', 'customer'],
+      ['out', 'outbound', 'page_inbox'],
+    ]);
+    expect(new Set(rows.map((r) => r.conversationId)).size).toBe(1); // cùng một hội thoại, khách là người NHẬN của echo
+    const [conv] = await db.select().from(conversations);
+    expect(conv!.psid).toBe(PSID);
   });
 
   it('tin đến sai thứ tự (qua nhiều request): sắp đúng theo sent_at, last_message_at không lùi', async () => {
@@ -244,6 +265,181 @@ describe('webhook → hàng đợi → worker → DB', () => {
     await waitJobs(1);
     expect(await count()).toBe(1000);
     expect((await db.select().from(conversations)).length).toBe(50);
+  });
+});
+
+describe('echo, tương tác của khách và cảnh báo chính sách', () => {
+  const T = 1_700_000_000_000;
+  const conv = async () => (await db.select().from(conversations))[0]!;
+  const ms = (d: Date | null) => (d === null ? null : d.getTime());
+
+  it('phân loại người gửi theo app_id của echo: app của ta, Page Inbox, app khác, không có app_id', async () => {
+    await send(
+      webhookPayload([
+        messageEvent({ mid: 'e_own', text: '1', isEcho: true, appId: 'OWN_APP_1', timestamp: T + 1 }),
+        messageEvent({ mid: 'e_inbox', text: '2', isEcho: true, appId: 263902037430900, timestamp: T + 2 }), // dạng số
+        messageEvent({ mid: 'e_other', text: '3', isEcho: true, appId: '999000111', timestamp: T + 3 }),
+        messageEvent({ mid: 'e_none', text: '4', isEcho: true, timestamp: T + 4 }),
+      ]),
+    );
+    await waitJobs(1);
+    const rows = await db.select().from(messages).orderBy(asc(messages.sentAt));
+    expect(rows.map((r) => [r.mid, r.senderKind, r.appId])).toEqual([
+      ['e_own', 'page_app', 'OWN_APP_1'],
+      ['e_inbox', 'page_inbox', '263902037430900'],
+      ['e_other', 'page_other', '999000111'],
+      ['e_none', 'page_unknown', null],
+    ]);
+    expect(rows.every((r) => r.direction === 'outbound')).toBe(true);
+  });
+
+  it('tin của Page KHÔNG làm mới last_user_interaction_at; có last_page_message_at riêng', async () => {
+    await send(webhookPayload([messageEvent({ mid: 'in', text: 'hỏi giá', timestamp: T })]));
+    await waitJobs(1);
+    await send(webhookPayload([messageEvent({ mid: 'out', text: 'dạ 5 triệu', isEcho: true, appId: '263902037430900', timestamp: T + 5000 })]));
+    await waitJobs(2);
+    const c = await conv();
+    expect(ms(c.lastUserInteractionAt)).toBe(T); // khách im từ T, dù Page đã trả lời lúc T+5000
+    expect(ms(c.lastPageMessageAt)).toBe(T + 5000);
+    expect(ms(c.lastMessageAt)).toBe(T + 5000);
+  });
+
+  it('sai thứ tự: không mốc nào bị lùi; mốc chỉ tiến khi có sự kiện mới hơn', async () => {
+    await send(webhookPayload([messageEvent({ mid: 'out', text: 'a', isEcho: true, timestamp: T + 5000 })]));
+    await waitJobs(1);
+    await send(webhookPayload([messageEvent({ mid: 'in_old', text: 'cũ', timestamp: T })])); // tới sau nhưng gửi trước
+    await waitJobs(2);
+    let c = await conv();
+    expect([ms(c.lastUserInteractionAt), ms(c.lastPageMessageAt), ms(c.lastMessageAt)]).toEqual([T, T + 5000, T + 5000]);
+
+    await send(webhookPayload([messageEvent({ mid: 'in_new', text: 'mới', timestamp: T + 9000 })]));
+    await waitJobs(3);
+    await send(webhookPayload([messageEvent({ mid: 'in_older', text: 'rất cũ', timestamp: T - 1000 })]));
+    await waitJobs(4);
+    c = await conv();
+    expect([ms(c.lastUserInteractionAt), ms(c.lastPageMessageAt), ms(c.lastMessageAt)]).toEqual([T + 9000, T + 5000, T + 9000]);
+  });
+
+  it('reaction, postback, referral của khách cập nhật last_user_interaction_at, không đổi last_message_at', async () => {
+    await send(webhookPayload([messageEvent({ mid: 'in', text: 'hỏi', timestamp: T })]));
+    await waitJobs(1);
+    await send(webhookPayload([reactionEvent({ timestamp: T + 1000 })]));
+    await waitJobs(2);
+    let c = await conv();
+    expect(ms(c.lastUserInteractionAt)).toBe(T + 1000);
+    expect(ms(c.lastMessageAt)).toBe(T); // thả cảm xúc không phải tin nhắn
+
+    await send(webhookPayload([postbackEvent({ timestamp: T + 2000 })]));
+    await waitJobs(3);
+    await send(webhookPayload([referralEvent({ timestamp: T + 3000 })]));
+    await waitJobs(4);
+    c = await conv();
+    expect(ms(c.lastUserInteractionAt)).toBe(T + 3000);
+    expect(ms(c.lastMessageAt)).toBe(T);
+    expect(await count()).toBe(1); // vẫn chỉ có đúng một tin
+  });
+
+  it('bỏ thả cảm xúc (unreact) và việc Page tự thả: last_user_interaction_at không đổi', async () => {
+    await send(webhookPayload([messageEvent({ mid: 'in', text: 'hỏi', timestamp: T })]));
+    await waitJobs(1);
+    await send(webhookPayload([reactionEvent({ action: 'unreact', timestamp: T + 1000 }), reactionEvent({ senderIsPage: true, timestamp: T + 2000 })]));
+    await waitJobs(2);
+    expect(ms((await conv()).lastUserInteractionAt)).toBe(T);
+  });
+
+  it('tương tác của khách chưa từng nhắn tin: tạo hội thoại chưa có tin (last_message_at null)', async () => {
+    await send(webhookPayload([postbackEvent({ psid: 'NEW_PSID', timestamp: T })])); // bấm Get Started
+    await waitJobs(1);
+    const c = await conv();
+    expect(c.psid).toBe('NEW_PSID');
+    expect(ms(c.lastUserInteractionAt)).toBe(T);
+    expect(c.lastMessageAt).toBeNull();
+    expect(await count()).toBe(0);
+  });
+
+  it('tin và tương tác cùng hội thoại trong một payload: một hội thoại, mốc lấy giá trị lớn nhất', async () => {
+    await send(
+      webhookPayload([
+        reactionEvent({ timestamp: T + 8000 }),
+        messageEvent({ mid: 'in', text: 'a', timestamp: T + 1000 }),
+        messageEvent({ mid: 'out', text: 'b', isEcho: true, timestamp: T + 2000 }),
+      ]),
+    );
+    await waitJobs(1);
+    expect((await db.select().from(conversations)).length).toBe(1);
+    const c = await conv();
+    expect([ms(c.lastUserInteractionAt), ms(c.lastPageMessageAt), ms(c.lastMessageAt)]).toEqual([T + 8000, T + 2000, T + 2000]);
+  });
+
+  it('sự kiện trong mảng standby (app khác giữ thread) cũng được lưu', async () => {
+    await send(
+      webhookPayload([messageEvent({ mid: 'sb1', text: 'nhắn khi app khác giữ thread', timestamp: T }), postbackEvent({ timestamp: T + 1 })], PAGE_ID, { standby: true }),
+    );
+    await waitJobs(1);
+    expect((await db.select().from(messages)).map((m) => m.mid)).toEqual(['sb1']);
+    expect(ms((await conv()).lastUserInteractionAt)).toBe(T + 1);
+  });
+
+  it('cùng một echo đến hai lần (qua messages và message_echoes): đúng một dòng', async () => {
+    const echo = messageEvent({ mid: 'echo_dup', text: 'trả lời', isEcho: true, appId: '263902037430900', timestamp: T });
+    await send(webhookPayload([echo]));
+    await send(webhookPayload([echo]));
+    await waitJobs(2);
+    expect(await count()).toBe(1);
+    expect(runs.reduce((n, r) => n + r.stored, 0)).toBe(1);
+    expect(runs.reduce((n, r) => n + r.duplicates, 0)).toBe(1);
+  });
+
+  it('cảnh báo chính sách của Meta: lưu một lần dù gửi lại, ghi log mức warn kèm hành động và Page', async () => {
+    const warn = policyEvent({ action: 'warning', reason: 'Tin nhắn bị coi là làm phiền', timestamp: T });
+    await send(webhookPayload([warn]));
+    await send(webhookPayload([warn])); // Meta gửi lại
+    await send(webhookPayload([policyEvent({ action: 'block', reason: 'Quá nhiều khiếu nại', timestamp: T + 1000 })]));
+    await send(webhookPayload([policyEvent({ action: 'unblock', timestamp: T + 2000 })]));
+    await waitJobs(4);
+    const rows = await db.select().from(pagePolicyEvents).orderBy(asc(pagePolicyEvents.occurredAt));
+    expect(rows.map((r) => [r.action, r.reason, r.occurredAt.getTime()])).toEqual([
+      ['warning', 'Tin nhắn bị coi là làm phiền', T],
+      ['block', 'Quá nhiều khiếu nại', T + 1000],
+      ['unblock', null, T + 2000],
+    ]);
+    const [page] = await db.select().from(pages).where(eq(pages.fbPageId, PAGE_ID));
+    expect(rows.every((r) => r.pageId === page!.id && r.tenantId === page!.tenantId)).toBe(true);
+    const warns = logLines.filter((l) => l.includes('Meta báo chính sách nhắn tin'));
+    // Mỗi sự kiện MỚI ghi log đúng một lần: lần Meta gửi lại warning không ghi log lại (4 lần gửi, 3 sự kiện khác nhau)
+    expect(warns).toHaveLength(3);
+    expect(warns.some((l) => l.includes('"action":"block"') && l.includes(PAGE_ID))).toBe(true);
+    expect(await count()).toBe(0); // không tạo tin nào
+  });
+
+  it('tương tác hoặc chính sách của Page chưa kết nối: đếm và cảnh báo, KHÔNG retry (không làm đầy dead-letter); tin nhắn thì vẫn phải retry', async () => {
+    const warnings: object[] = [];
+    const log = { info: () => {}, warn: (o: object) => void warnings.push(o) };
+    const onlyOthers = webhookPayload([postbackEvent({ pageId: 'NOPE' }), policyEvent({ pageId: 'NOPE' })], 'NOPE');
+    const stats = await processWebhookPayload(db, onlyOthers, log); // KHÔNG ném lỗi
+    expect(stats).toMatchObject({ unknownPageOther: 2, unknownPage: 0, stored: 0, policyStored: 0 });
+    expect(warnings.some((w) => 'unknownPageOther' in w)).toBe(true); // không bỏ im lặng: có cảnh báo
+    expect((await db.select().from(conversations)).length).toBe(0);
+    expect(await db.select().from(pagePolicyEvents)).toHaveLength(0);
+
+    // Còn TIN NHẮN gửi tới Page chưa kết nối thì vẫn ném lỗi (Meta đã nhận 200, bỏ là mất tin)
+    const withMessage = webhookPayload([messageEvent({ mid: 'lost', text: 'a', pageId: 'NOPE' })], 'NOPE');
+    await expect(processWebhookPayload(db, withMessage, log)).rejects.toBeInstanceOf(UnknownPageError);
+  });
+
+  it('không cấu hình người gửi: dùng mặc định (Page Inbox nhận dạng được, app lạ là page_other)', async () => {
+    const log = { info: () => {}, warn: () => {} };
+    await processWebhookPayload(
+      db,
+      webhookPayload([
+        messageEvent({ mid: 'd1', text: 'a', isEcho: true, appId: '263902037430900', timestamp: T }),
+        messageEvent({ mid: 'd2', text: 'b', isEcho: true, appId: '26390203743090', timestamp: T + 1 }), // dạng 14 chữ số trong tài liệu Meta
+        messageEvent({ mid: 'd3', text: 'c', isEcho: true, appId: '555', timestamp: T + 2 }),
+      ]),
+      log,
+    );
+    const rows = await db.select().from(messages).orderBy(asc(messages.sentAt));
+    expect(rows.map((r) => r.senderKind)).toEqual(['page_inbox', 'page_inbox', 'page_other']);
   });
 });
 
@@ -388,7 +584,13 @@ describe('độ trễ và độ bền', () => {
 describe('quyền riêng tư trong log', () => {
   it('log không chứa nội dung tin, PSID, chữ ký hay APP_SECRET (kể cả ở mức debug)', async () => {
     const secretText = 'NOI-DUNG-BI-MAT-98765';
-    const payload = webhookPayload([messageEvent({ mid: 'priv', text: secretText })]);
+    const echoSecret = 'TIN-NHAN-VIEN-BI-MAT-24680'; // tin nhân viên trả lời cũng là nội dung nhạy cảm
+    const payload = webhookPayload([
+      messageEvent({ mid: 'priv', text: secretText }),
+      messageEvent({ mid: 'priv_echo', text: echoSecret, isEcho: true, appId: '263902037430900', timestamp: 1_700_000_000_001 }),
+      reactionEvent({ timestamp: 1_700_000_000_002 }),
+      policyEvent({ action: 'warning', reason: 'Lý do do Meta nêu', timestamp: 1_700_000_000_003 }),
+    ]);
     const raw = JSON.stringify(payload);
     const signature = sign(raw);
     const ok = await app.inject({
@@ -418,7 +620,8 @@ describe('quyền riêng tư trong log', () => {
 
     const all = logLines.join('\n');
     expect(all.length).toBeGreaterThan(0); // có log thật để kiểm tra
-    for (const forbidden of [secretText, PSID, signature, badSig, APP_SECRET, VERIFY_TOKEN]) {
+    expect(all).toContain('Meta báo chính sách nhắn tin'); // cảnh báo chính sách có ghi log (lý do là chữ của Meta, không phải của khách)
+    for (const forbidden of [secretText, echoSecret, PSID, signature, badSig, APP_SECRET, VERIFY_TOKEN]) {
       expect(all).not.toContain(forbidden);
     }
   });

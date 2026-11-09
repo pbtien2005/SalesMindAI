@@ -1,6 +1,6 @@
 # SalesMind AI — Module 1: Tiếp nhận tin nhắn từ Facebook Page
 
-Module này nhận tin nhắn khách gửi vào Facebook Page của doanh nghiệp, kiểm tra tính xác thực, khử trùng và lưu vào PostgreSQL, để các module sau (AI trích nhu cầu, đề xuất việc, nhắc hạn) dùng làm dữ liệu đầu vào.
+Module này nhận tin nhắn khách gửi vào Facebook Page của doanh nghiệp **và tin Page trả lời khách** (kể cả tin nhân viên gõ ở Page Inbox), kiểm tra tính xác thực, khử trùng và lưu vào PostgreSQL, để các module sau (AI trích nhu cầu, đề xuất việc, nhắc hạn) dùng làm dữ liệu đầu vào. Ghi nhận thêm lần tương tác cuối của khách (tin, reaction, postback, referral) và cảnh báo chính sách của Meta.
 
 **Phạm vi:** chỉ đọc và lưu tin. Không có AI, không có giao diện, **không gửi tin cho khách**.
 
@@ -21,6 +21,8 @@ CLI backfill ──▶ pg-boss ──▶ worker ──▶ Graph API (Conversatio
 Nguyên tắc cốt lõi:
 - `POST /webhook` chỉ kiểm tra chữ ký (HMAC-SHA256, so sánh timing-safe) rồi ghi vào hàng đợi và trả 200. Xử lý nặng làm ở worker.
 - Khử trùng theo `message.mid`: Meta có thể gửi lại cùng một tin nhiều lần (tới 36 giờ nếu ta không trả 200).
+- **Lưu cả tin của Page (echo).** Messenger gửi echo qua field riêng `message_echoes`; bỏ qua nó thì câu trả lời của nhân viên vô hình và không tính được "bao lâu khách chưa được trả lời". Mỗi tin có `direction` (inbound hoặc outbound) và, với tin của Page, `sender_kind` suy ra từ `app_id` (`page_app`, `page_inbox`, `page_other`, `page_unknown`).
+- `conversations.last_user_interaction_at` chỉ tính hành động của khách (tin, reaction, postback, referral), tách khỏi `last_page_message_at`. Quy tắc cửa sổ nhắn tin 24 giờ không nằm ở module này.
 - Không bỏ tin im lặng: tin chưa lưu được thì retry, hết retry thì vào dead-letter để chạy lại sau.
 - Page token luôn mã hóa khi lưu (AES-256-GCM). Token và nội dung tin không bao giờ vào log.
 
@@ -56,6 +58,7 @@ Postgres của Docker dùng cổng **5433** (không phải 5432) để khỏi đ
 | `DATABASE_URL` | có | Chuỗi kết nối PostgreSQL |
 | `GRAPH_API_VERSION` | có | Phiên bản Graph API, ví dụ `v26.0` |
 | `PORT` | không | Mặc định 3000 |
+| `PAGE_INBOX_APP_IDS` | không | `app_id` của Page Inbox, cách nhau bằng dấu phẩy. Mặc định chấp nhận cả `263902037430900` và `26390203743090` (tài liệu Meta và thực tế lệch nhau, chưa xác minh) |
 | `TRUST_PROXY` | không | `true` khi chạy sau tunnel, proxy hoặc load balancer (để lấy IP thật cho giới hạn tốc độ). Mặc định `false`. |
 | `FB_LOGIN_CONFIG_ID` | không | ID cấu hình Facebook Login for Business, nếu app của bạn cần thay cho `scope` |
 | `TEST_DATABASE_URL` | không | Database cho test; tên PHẢI kết thúc bằng `_test` |
@@ -64,7 +67,7 @@ Postgres của Docker dùng cổng **5433** (không phải 5432) để khỏi đ
 
 Meta chỉ gọi được địa chỉ HTTPS công khai, nên khi dev cần tunnel (ngrok hoặc cloudflared). Hướng dẫn từng bước cùng bảng lỗi thường gặp: **[doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md)**. Tóm tắt:
 
-1. Khai báo trong Meta App: Valid OAuth Redirect URI `PUBLIC_BASE_URL/auth/facebook/callback`, Webhook URL `PUBLIC_BASE_URL/webhook` với `VERIFY_TOKEN`, và **Subscribe field `messages` ở cấp App**.
+1. Khai báo trong Meta App: Valid OAuth Redirect URI `PUBLIC_BASE_URL/auth/facebook/callback`, Webhook URL `PUBLIC_BASE_URL/webhook` với `VERIFY_TOKEN`, và **Subscribe 7 field ở cấp App**: `messages`, `message_echoes`, `message_reactions`, `messaging_postbacks`, `messaging_referrals`, `standby`, `messaging_policy_enforcement` (thiếu `message_echoes` thì tin nhân viên gõ ở Page Inbox không vào DB).
 2. `npm run cli -- tenant:create "Tên doanh nghiệp"` in một liên kết dùng một lần (hết hạn sau 10 phút).
 3. Người quản lý Page mở liên kết bằng trình duyệt, đăng nhập Facebook, cấp quyền. Hệ thống lưu Page và đăng ký webhook.
 
@@ -83,6 +86,7 @@ npm run cli -- <lệnh>
 | `tenant:list` | Liệt kê tenant và số Page |
 | `backfill [<fbPageId>] [--force]` | Xếp việc lấy lại tin cũ (server xử lý). Bỏ qua Page đang có backfill chạy dở, trừ khi `--force` |
 | `backfill:status` | Tiến độ backfill từng Page và độ sâu hàng đợi |
+| `pages:resubscribe [<fbPageId>]` | Đăng ký lại webhook theo danh sách field hiện hành cho Page đã kết nối (cần khi danh sách field đổi) |
 | `queue:status` | Độ sâu mọi hàng đợi và cảnh báo; thoát mã 2 nếu có vấn đề |
 | `queue:redrive <webhook\|backfill> [--limit N] [--dry-run]` | Đưa job trong dead-letter về hàng đợi gốc |
 
@@ -144,7 +148,7 @@ doc/                      kế hoạch, hướng dẫn kiểm tra với Page th�
 
 - **Chưa thử với Meta thật.** Đơn vị `timestamp` của webhook (giả định mili giây), cấu trúc payload thật của tin có ảnh, và `id` tin của Conversations API có trùng `mid` của webhook không đều là điểm chưa xác minh. Danh sách đầy đủ trong [PROGRESS.md](PROGRESS.md).
 - Dead-letter không có cảnh báo ngoài log. Hết 14 ngày mà chưa xử lý thì tin mất.
-- Tin của chính Page (`is_echo`) bị bỏ qua có chủ ý.
+- Chưa biết Business Suite và app Pages trên điện thoại có tạo echo không và `app_id` của chúng (chỉ Page Inbox được tài liệu nhắc); xem [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md) mục C1.
 - Chưa có đăng nhập người dùng: luồng kết nối Page được bảo vệ bằng liên kết dùng một lần do quản trị viên tạo qua CLI.
 - `npm audit` báo 4 cảnh báo mức vừa của `esbuild` cũ bên trong `drizzle-kit` (chỉ dev, không vào production).
 
@@ -153,4 +157,5 @@ doc/                      kế hoạch, hướng dẫn kiểm tra với Page th�
 - [CLAUDE.md](CLAUDE.md): quy tắc kỹ thuật và quy trình làm việc theo mốc
 - [PROGRESS.md](PROGRESS.md): trạng thái từng mốc, bằng chứng, điểm Meta API đã và chưa xác minh
 - [doc/PLAN-module1.md](doc/PLAN-module1.md): kế hoạch Module 1
+- [doc/PLAN-sua-module1-theo-bao-cao.md](doc/PLAN-sua-module1-theo-bao-cao.md): các thay đổi Module 1 theo báo cáo nghiên cứu (echo, tương tác, standby, chính sách)
 - [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md): kiểm tra với Page thật

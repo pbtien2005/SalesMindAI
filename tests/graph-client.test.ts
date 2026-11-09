@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { GraphApiError, GraphClient, LOGIN_SCOPES, parseGraphTime } from '../src/meta/graph-client.js';
+import { GraphApiError, GraphClient, LOGIN_SCOPES, parseGraphTime, SUBSCRIBED_FIELDS } from '../src/meta/graph-client.js';
 import { API_VERSION, FB_APP_ID, FB_APP_SECRET, makeFakeFetch, metaError, type MetaHandler } from './helpers/fake-meta.js';
 
 const clientWith = (handler: MetaHandler, extra: { timeoutMs?: number } = {}) => {
@@ -124,11 +124,12 @@ describe('GraphClient.listPages', () => {
 });
 
 describe('GraphClient.subscribePage', () => {
-  it('POST subscribed_apps với subscribed_fields=messages, Page token và appsecret_proof', async () => {
+  it('POST subscribed_apps với ĐỦ field cần cho Module 1, Page token và appsecret_proof', async () => {
     const { client, calls } = clientWith(() => ({ body: { success: true } }));
     await client.subscribePage('PAGE_9', 'PAGE_TOKEN');
     expect(calls[0]).toMatchObject({ method: 'POST', path: 'PAGE_9/subscribed_apps' });
-    expect(calls[0]!.params.get('subscribed_fields')).toBe('messages');
+    const fields = calls[0]!.params.get('subscribed_fields')!.split(',');
+    expect(fields).toEqual([...SUBSCRIBED_FIELDS]);
     expect(calls[0]!.params.get('access_token')).toBe('PAGE_TOKEN');
     expect(calls[0]!.params.get('appsecret_proof')).toBeTruthy();
   });
@@ -300,13 +301,14 @@ describe('GraphClient: Conversations API (backfill)', () => {
         id: 'm_1',
         created_time: '2026-11-09T07:12:30+0000',
         from: { id: 'PSID_1', name: 'Nguyễn Văn A', email: 'a@example.com' },
+        to: { data: [{ id: 'PAGE_1', name: 'Cửa hàng', email: 'shop@example.com' }] },
         message: 'Anh muốn mua 20 bộ',
       },
     }));
     const m = await client.getMessage('T', 'm_1');
-    expect(m).toEqual({ id: 'm_1', createdAt: new Date('2026-11-09T07:12:30.000Z'), fromId: 'PSID_1', text: 'Anh muốn mua 20 bộ' });
-    expect(JSON.stringify(m)).not.toContain('example.com'); // không giữ dữ liệu cá nhân không cần
-    expect(calls[0]!.params.get('fields')).toBe('id,created_time,from,message');
+    expect(m).toEqual({ id: 'm_1', createdAt: new Date('2026-11-09T07:12:30.000Z'), fromId: 'PSID_1', toId: 'PAGE_1', text: 'Anh muốn mua 20 bộ' });
+    expect(JSON.stringify(m)).not.toContain('example.com'); // không giữ email (của khách lẫn của Page)
+    expect(calls[0]!.params.get('fields')).toBe('id,created_time,from,to,message');
     expect(calls[0]!.params.get('fields')).not.toContain('attachments'); // tài liệu không nêu field này
   });
 

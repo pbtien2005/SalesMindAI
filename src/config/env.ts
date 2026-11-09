@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { parseKey } from '../crypto/token-crypto.js';
+import { DEFAULT_PAGE_INBOX_APP_IDS } from '../meta/sender-kind.js';
 
 /** Khóa AES-256-GCM: base64 chuẩn của đúng 32 byte (kiểm tra chặt, dùng chung với token-crypto). */
 const tokenEncKey = z.string().refine(
@@ -44,6 +45,18 @@ const envSchema = z.object({
   TOKEN_ENC_KEY: tokenEncKey,
   GRAPH_API_VERSION: z.string().regex(/^v\d+\.\d+$/, 'Dạng đúng: v23.0'),
   DATABASE_URL: z.string().url(),
+  /**
+   * `app_id` của Page Inbox (tin nhân viên gõ tay), cách nhau bằng dấu phẩy. Bỏ trống: dùng giá trị mặc định
+   * (cả dạng 14 và 15 chữ số, vì tài liệu Meta và thực tế chưa thống nhất). Điền giá trị thật sau khi xem một echo thật.
+   */
+  PAGE_INBOX_APP_IDS: z
+    .string()
+    .optional()
+    .transform((v) => {
+      const ids = (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      return ids.length > 0 ? ids : [...DEFAULT_PAGE_INBOX_APP_IDS];
+    })
+    .refine((ids) => ids.every((id) => /^\d{5,20}$/.test(id)), 'PAGE_INBOX_APP_IDS chỉ gồm các ID dạng số, cách nhau bằng dấu phẩy'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   /**
    * Tin các header X-Forwarded-* (cần khi chạy sau proxy, tunnel hoặc load balancer để biết IP thật của

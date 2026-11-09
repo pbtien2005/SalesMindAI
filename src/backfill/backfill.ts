@@ -3,7 +3,7 @@ import type { TokenCrypto } from '../crypto/token-crypto.js';
 import type { Db } from '../db/client.js';
 import { messages, pages } from '../db/schema.js';
 import { GraphApiError, type GraphClient, type GraphMessage } from '../meta/graph-client.js';
-import type { InboundMessage } from '../meta/parse-webhook.js';
+import type { ParsedMessage } from '../meta/parse-webhook.js';
 import { stripNul } from '../meta/sanitize.js';
 import { storeInbound, type StoreItem } from '../workers/store-messages.js';
 
@@ -143,8 +143,13 @@ export interface ConversationStats {
   listed: number;
   /** Bỏ qua vì đã có trong DB (cùng mid), không cần gọi lấy chi tiết. */
   alreadyStored: number;
-  /** Tin do chính Page gửi. */
+  /**
+   * Số tin do chính Page gửi, đếm TRƯỚC khi lọc: có thể trùng với `noText` hoặc `noRecipient`. Số tin của Page
+   * thật sự được lưu nằm trong `stored`.
+   */
   outbound: number;
+  /** Tin của Page mà Meta không cho biết người nhận nên không gắn được vào hội thoại. */
+  noRecipient: number;
   /** Tin không có text (thường chỉ có ảnh): không lưu, xem ghi chú ở handleBackfillConversation. */
   noText: number;
   /** Meta báo lỗi 4xx khi lấy chi tiết (thường là tin quá 20 gần nhất: "đã xóa"). */
@@ -179,7 +184,7 @@ export async function handleBackfillConversation(
   const sleep = deps.sleep ?? defaultSleep;
   const pacing = deps.pacingMs ?? 100;
   const stats: ConversationStats = {
-    listed: 0, alreadyStored: 0, outbound: 0, noText: 0, unavailable: 0,
+    listed: 0, alreadyStored: 0, outbound: 0, noRecipient: 0, noText: 0, unavailable: 0,
     stored: 0, duplicates: 0, heuristicSkipped: 0, truncated: false,
   };
 
@@ -191,10 +196,15 @@ export async function handleBackfillConversation(
   const token = crypto.decrypt(page.tokenEnc, page.fbPageId);
   const pageRef = { id: page.id, tenantId: page.tenantId };
 
-  const collected: GraphMessage[] = [];
+  const collected: Array<{ parsed: ParsedMessage }> = [];
   const flush = async () => {
     if (collected.length === 0) return;
-    const items: StoreItem[] = collected.map((g) => ({ m: toInbound(g, page.fbPageId), page: pageRef }));
+    const items: StoreItem[] = collected.map((c) => ({
+      m: c.parsed,
+      page: pageRef,
+      // Backfill không biết app nào đã gửi: tin của Page là page_unknown.
+      senderKind: c.parsed.direction === 'inbound' ? 'customer' : 'page_unknown',
+    }));
     items.sort((a, b) => a.m.sentAtMs - b.m.sentAtMs);
     const r = await db.transaction((tx) => storeInbound(tx, items, 'backfill', { heuristicDedupe: true }));
     stats.stored += r.stored;
@@ -231,12 +241,17 @@ export async function handleBackfillConversation(
         const g = await graph.getMessage(token, l.id);
         if (g.fromId === null) {
           stats.unavailable += 1;
-        } else if (g.fromId === page.fbPageId) {
-          stats.outbound += 1; // tin do Page gửi: module này chỉ lưu tin của khách
         } else if (g.text === null || g.text === '') {
           stats.noText += 1;
+          if (g.fromId === page.fbPageId) stats.outbound += 1;
+        } else if (g.fromId === page.fbPageId) {
+          // Tin do Page gửi (nhân viên trả lời): cần lưu để biết bao lâu khách chưa được trả lời.
+          stats.outbound += 1;
+          // Không biết khách nào (hoặc `to` lại trỏ chính Page) thì không gắn được vào hội thoại: bỏ qua, không đoán.
+          if (g.toId === null || g.toId === page.fbPageId) stats.noRecipient += 1;
+          else collected.push({ parsed: toParsed(g, page.fbPageId, 'outbound', g.toId) });
         } else {
-          collected.push(g);
+          collected.push({ parsed: toParsed(g, page.fbPageId, 'inbound', g.fromId) });
         }
       } catch (err) {
         if (err instanceof GraphApiError && isUnavailable(err)) {
@@ -285,11 +300,13 @@ export async function handleBackfillConversation(
 }
 
 /** Chuyển một tin Graph thành dạng chung với webhook để dùng chung phần lưu. */
-function toInbound(g: GraphMessage, fbPageId: string): InboundMessage {
+function toParsed(g: GraphMessage, fbPageId: string, direction: 'inbound' | 'outbound', psid: string): ParsedMessage {
   return {
     fbPageId,
-    psid: stripNul(g.fromId!) as string, // đã lọc: chỉ tin của khách mới tới đây
+    psid: stripNul(psid) as string, // khách: người gửi (tin đến) hoặc người nhận (tin của Page)
     mid: stripNul(g.id) as string,
+    direction,
+    appId: null, // Conversations API không cho biết app nào đã gửi
     text: g.text === null ? null : (stripNul(g.text) as string),
     attachments: null,
     sentAtMs: g.createdAt.getTime(),

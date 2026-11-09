@@ -2,6 +2,9 @@ import { and, eq } from 'drizzle-orm';
 import type { BackfillState } from '../backfill/backfill.js';
 import { backfillOverview, isBackfillRunning } from '../backfill/status.js';
 import { assessQueueHealth } from '../queue/monitor.js';
+import { resubscribePages } from '../auth/resubscribe.js';
+import { createTokenCrypto } from '../crypto/token-crypto.js';
+import { GraphClient } from '../meta/graph-client.js';
 import { parseBackfillArgs, parseRedriveArgs } from './args.js';
 import { queueOverview, redriveDeadLetter } from '../queue/admin.js';
 import { newConnectUrl, createTenant, listTenants, tenantExists } from '../auth/tenants.js';
@@ -24,6 +27,8 @@ const USAGE = `Dùng: npm run cli -- <lệnh>
   backfill [<fbPageId>] [--force]  Đưa việc lấy lại tin cũ vào hàng đợi (mọi Page đang dùng được, hoặc một Page).
                               Bỏ qua Page đang có backfill chạy dở, trừ khi dùng --force
   backfill:status             Xem tiến độ backfill và độ sâu hàng đợi
+  pages:resubscribe [<fbPageId>]  Đăng ký lại webhook (danh sách field hiện hành) cho Page đã kết nối.
+                              Cần sau khi danh sách field đổi, vì Page cũ chỉ nhận các field lúc kết nối
   queue:status                Xem độ sâu mọi hàng đợi (webhook, backfill, dead-letter) và cảnh báo
   queue:redrive <webhook|backfill> [--limit N] [--dry-run]
                               Đưa job trong dead-letter về hàng đợi gốc để xử lý lại (sau khi đã sửa nguyên nhân)
@@ -114,6 +119,24 @@ async function main(): Promise<number> {
           await boss.stop({ graceful: true, timeout: 5000 });
         }
         return 0;
+      }
+      case 'pages:resubscribe': {
+        const fbPageId = args.find((a) => !a.startsWith('--'));
+        const graph = new GraphClient({ apiVersion: env.GRAPH_API_VERSION, appId: env.FB_APP_ID, appSecret: env.APP_SECRET });
+        const outcomes = await resubscribePages({ db, graph, crypto: createTokenCrypto(env.TOKEN_ENC_KEY) }, fbPageId);
+        if (outcomes.length === 0) {
+          throw new Error(fbPageId ? `Không có Page đang dùng được với ID ${fbPageId}.` : 'Chưa có Page nào đang dùng được.');
+        }
+        for (const o of outcomes) {
+          const msg =
+            o.status === 'subscribed'
+              ? 'đã đăng ký lại'
+              : o.status === 'token_invalid'
+                ? 'token không hợp lệ (190), cần kết nối lại Page bằng liên kết mới'
+                : `THẤT BẠI (mã Meta ${o.graphCode ?? 'không rõ'})`;
+          console.log(`${o.name} (${o.fbPageId}): ${msg}`);
+        }
+        return outcomes.every((o) => o.status === 'subscribed') ? 0 : 2;
       }
       case 'queue:status': {
         const boss = await createBoss(env.DATABASE_URL);

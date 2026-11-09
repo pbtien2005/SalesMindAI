@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { asc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTokenCrypto } from '../src/crypto/token-crypto.js';
-import { conversations, messages, pages, tenants } from '../src/db/schema.js';
+import { conversations, messages, pagePolicyEvents, pages, tenants } from '../src/db/schema.js';
 import { openTestDb, truncateAll } from './helpers/test-db.js';
 
 const handle = openTestDb();
@@ -199,5 +199,58 @@ describe('khử trùng và sắp xếp tin nhắn', () => {
     await db.insert(messages).values(msg(s, 'mid.vi', new Date(), text));
     const [row] = await db.select().from(messages).where(eq(messages.mid, 'mid.vi'));
     expect(row!.text).toBe(text);
+  });
+});
+
+describe('schema cho echo, tương tác và chính sách', () => {
+  it('tin mới mặc định là inbound/customer, app_id null; echo lưu được direction, sender_kind, app_id', async () => {
+    const s = await seed();
+    const [def] = await db.insert(messages).values(msg(s, 'mid.def', new Date())).returning();
+    expect(def).toMatchObject({ direction: 'inbound', senderKind: 'customer', appId: null });
+    const [echo] = await db
+      .insert(messages)
+      .values({ ...msg(s, 'mid.echo', new Date()), direction: 'outbound', senderKind: 'page_inbox', appId: '263902037430900' })
+      .returning();
+    expect(echo).toMatchObject({ direction: 'outbound', senderKind: 'page_inbox', appId: '263902037430900' });
+  });
+
+  it('direction và sender_kind chỉ nhận giá trị hợp lệ', async () => {
+    const s = await seed();
+    await expect(
+      handle.pool.query(
+        `INSERT INTO messages (tenant_id, page_id, conversation_id, mid, sent_at, source, direction) VALUES ($1,$2,$3,'x',now(),'webhook','sideways')`,
+        [s.tenant.id, s.page.id, s.conv.id],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      handle.pool.query(
+        `INSERT INTO messages (tenant_id, page_id, conversation_id, mid, sent_at, source, sender_kind) VALUES ($1,$2,$3,'y',now(),'webhook','robot')`,
+        [s.tenant.id, s.page.id, s.conv.id],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('hội thoại có hai mốc mới, mặc định null', async () => {
+    const s = await seed();
+    expect(s.conv.lastUserInteractionAt).toBeNull();
+    expect(s.conv.lastPageMessageAt).toBeNull();
+  });
+
+  it('page_policy_events: lưu được, khử trùng theo (Page, thời điểm, hành động), reason có thể null', async () => {
+    const s = await seed();
+    const at = new Date(1_700_000_000_000);
+    const base = { tenantId: s.tenant.id, pageId: s.page.id, occurredAt: at };
+    await db.insert(pagePolicyEvents).values({ ...base, action: 'warning', reason: 'làm phiền' });
+    await expect(db.insert(pagePolicyEvents).values({ ...base, action: 'warning', reason: 'lần gửi lại' })).rejects.toThrow(); // trùng
+    await db.insert(pagePolicyEvents).values({ ...base, action: 'unblock', reason: null }); // khác hành động cùng thời điểm: được
+    expect(await db.select().from(pagePolicyEvents)).toHaveLength(2);
+  });
+
+  it('page_policy_events: khóa ngoại ghép chặn tenant không khớp với Page', async () => {
+    const a = await seed('page-a');
+    const b = await seed('page-b');
+    await expect(
+      db.insert(pagePolicyEvents).values({ tenantId: b.tenant.id, pageId: a.page.id, action: 'block', occurredAt: new Date() }),
+    ).rejects.toThrow();
   });
 });

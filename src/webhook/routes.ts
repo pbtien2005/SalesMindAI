@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { stripNul } from '../meta/sanitize.js';
+import { quoteLargeAppIds, stripNul } from '../meta/sanitize.js';
 import { safeEqual, verifySignature } from '../meta/signature.js';
 import type { WebhookQueue } from '../queue/boss.js';
 
@@ -79,7 +79,8 @@ export const webhookRoutes: FastifyPluginAsync<WebhookRouteOptions> = async (app
     let payload: unknown;
     try {
       // Bỏ NUL (\u0000) trước khi vào hàng đợi: pg-boss lưu job bằng jsonb, không nhận ký tự này.
-      payload = stripNul(JSON.parse(raw.toString('utf8')));
+      // app_id dài chuyển thành chuỗi trước khi parse để không mất độ chính xác (xem quoteLargeAppIds).
+      payload = stripNul(JSON.parse(quoteLargeAppIds(raw.toString('utf8'))));
     } catch {
       // Chữ ký đúng nhưng body không phải JSON: Meta không bao giờ gửi vậy. 400 và không thử lại.
       return reply.code(400).send({ error: 'invalid_json' });

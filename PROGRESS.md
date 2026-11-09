@@ -21,6 +21,36 @@ Kế hoạch chi tiết: [doc/PLAN-module1.md](doc/PLAN-module1.md).
 | 5 | Backfill tin cũ | đang làm (code xong, chờ thử với Page thật) | 2026-11-09 | **Đã có bằng chứng:** `npm run typecheck` sạch; `npm test` 236/236 đạt, chạy 2 lần liên tiếp (backfill 32, backfill chạy thật với pg-boss 7, graph-client 32). 8 mutation đều làm test đỏ (mất phần đã lấy khi bị giới hạn tốc độ, lưu cả tin của Page, bỏ giới hạn 20 tin, tắt khử trùng dự phòng, bỏ tự sắp xếp, nuốt lỗi 5xx, khử trùng tin không có text, lưu tin không có text). CLI thật: `backfill` xếp việc, lần hai báo "đã có việc chờ"; `backfill:status` đúng. **Server thật + Meta thật với token giả:** Graph API trả mã 190, Page bị đánh dấu `token_invalid`, trạng thái `failed`, không retry. `code-review`: 10 phát hiện, sửa 9, giữ 1. **Chưa có bằng chứng:** lấy tin thật từ một Page thật (cần bạn). |
 | 6 | Quan sát (log, metric), README, review | xong | 2026-11-09 | `npm run typecheck` sạch; `npm test` **302/302 đạt, chạy 3 lần liên tiếp** (16 file). Đã làm: redact log, `x-request-id`, `/readyz` (DB và hàng đợi, 503 không lộ chi tiết), monitor độ sâu hàng đợi mỗi phút, giới hạn tốc độ `/auth/facebook/*` (30 yêu cầu mỗi phút mỗi IP, cấu hình `TRUST_PROXY`), CLI `queue:status` và `queue:redrive`, [README.md](README.md). 6 mutation cho các kiểm soát mới đều làm test đỏ. **Tắt nhẹ nhàng đã kiểm tra thật trên Linux** (container `node:26-slim`): `SIGTERM` thoát mã 0 sau 474 ms, không có log lỗi; thêm test job đang chạy dở hoàn tất trước khi dừng (mutation `graceful: false` làm test đỏ). Bản production: `npm run build` rồi `node dist/server.js` khởi động, `/readyz` ready, `db:migrate:prod` chạy được. Chạy lại dead-letter bằng pg-boss thật: payload còn nguyên, tin được lưu đúng một lần. `code-review` toàn module (`src`): 9 phát hiện, sửa 8, giữ 1 có chủ ý. |
 
+## Sửa Module 1 theo báo cáo nghiên cứu (2026-11-09)
+
+Nguồn: `reports/Công nghệ luồng nghiệp vụ SalesMind.md` và 4 ghi chú gốc. Kế hoạch và bảng truy vết: [doc/PLAN-sua-module1-theo-bao-cao.md](doc/PLAN-sua-module1-theo-bao-cao.md).
+
+**Phát hiện gốc:** Messenger gửi echo (tin do Page gửi) qua field riêng `message_echoes`, không qua `messages`. Module 1 chỉ đăng ký `messages` và còn bỏ `is_echo`, nên mọi câu trả lời nhân viên gõ ở Page Inbox **không bao giờ vào DB**, làm hỏng logic "bao lâu khách chưa được trả lời" và bộ đếm bám khách của các module sau. Quy tắc "bỏ qua `is_echo`" trong CLAUDE.md đã được đổi (câu hỏi số 1 trong mục "Câu hỏi cần chủ sản phẩm quyết định" của báo cáo).
+
+**Đã làm (migration `0002_echoes_and_interactions`):**
+- Lưu tin của Page: `messages.direction`, `messages.sender_kind` (`customer`, `page_app`, `page_inbox`, `page_other`, `page_unknown`), `messages.app_id`. Khách của một echo là người nhận.
+- `conversations.last_user_interaction_at` (chỉ hành động của khách: tin, reaction, postback, referral) và `last_page_message_at`; cả hai dùng `GREATEST` nên tin đến sai thứ tự không làm lùi. Tin của Page không làm mới `last_user_interaction_at`. Dữ liệu cũ được điền từ `last_message_at`.
+- Đăng ký 7 field webhook (đã xác minh cả 7 tên có trong enum `subscribed_fields` của tài liệu Meta): `messages`, `message_echoes`, `message_reactions`, `messaging_postbacks`, `messaging_referrals`, `standby`, `messaging_policy_enforcement`.
+- Xử lý sự kiện trong mảng `standby` (khi app khác giữ thread); bảng `page_policy_events` cho cảnh báo hoặc khóa từ Meta (khóa trong payload là `policy_enforcement`, theo tài liệu), kèm log mức `warn`.
+- Lệnh `pages:resubscribe` để đăng ký lại field cho Page đã kết nối trước khi danh sách đổi.
+- Backfill lưu cả tin của Page (cần trường `to`); khử trùng dự phòng tách theo hướng.
+- Cấu hình `PAGE_INBOX_APP_IDS` (mặc định chấp nhận cả `263902037430900` và `26390203743090`).
+
+**Bằng chứng:** `npm run typecheck` sạch; `npm test` **374/374 đạt, chạy 2 lần liên tiếp** (19 file; trước đó 302). 9 mutation đều làm test đỏ (bỏ echo, tin của Page làm mới `last_user_interaction_at`, tính cả `unreact`, bỏ `standby`, quên `message_echoes` trong danh sách field, khử trùng không phân biệt hướng, không bọc `app_id` dài, tương tác của Page chưa kết nối gây retry, `to` trỏ chính Page). `code-review`: 10 phát hiện, sửa 6, ghi nhận 4. Smoke test với server thật: khách nhắn, nhân viên trả lời qua Page Inbox (`app_id` dạng số giữ đủ 15 chữ số), khách thả cảm xúc 2 giờ sau, bỏ thả cảm xúc, tin qua `standby`, cảnh báo chính sách, echo gửi lại. Kết quả đúng từng điểm; log không chứa nội dung tin, PSID, secret hay chữ ký. `pages:resubscribe` gọi Meta thật bằng token giả: Meta trả 190, Page được đánh dấu `token_invalid`.
+
+**Chưa xác minh (cần Page thật, đã nêu trong báo cáo):** Business Suite và app Pages trên điện thoại có tạo echo không và `app_id` của chúng; `app_id` thật của Page Inbox (14 hay 15 chữ số); cấu trúc payload thật của `messaging_postbacks` và `messaging_referrals` (mã chỉ phụ thuộc vào việc có khóa `postback`/`referral` và người gửi là khách); `messages` có kèm echo hay không. Hướng dẫn thử: [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md) mục C1.
+
+**Quyết định từ `code-review`:**
+- **Khóa chứa cảnh báo chính sách nhận cả ba dạng** (`policy_enforcement`, `policy-enforcement`, `messaging_policy_enforcement`): tài liệu Meta ghi dạng gạch dưới nhưng chưa kiểm chứng bằng payload thật, và bỏ lỡ cảnh báo khóa Page rất đắt.
+- **`app_id` dạng số từ 16 chữ số** mất độ chính xác khi `JSON.parse` (quá 2^53): route bọc chúng thành chuỗi từ văn bản gốc trước khi parse. Chỉ khớp khóa `"app_id"` thật, không đụng nội dung tin.
+- **Tương tác hoặc chính sách của Page chưa kết nối** chỉ đếm và cảnh báo, không retry (khác với tin nhắn, vẫn retry rồi vào dead-letter), để không làm đầy dead-letter vì một lượt thả cảm xúc.
+- **Log cảnh báo chính sách chỉ cho sự kiện MỚI**, ghi sau khi transaction thành công: Meta gửi lại hoặc job retry không lặp cảnh báo.
+- **Backfill:** tin của Page có `to` trỏ chính Page thì bỏ qua (không tạo hội thoại mang PSID của Page).
+- Ghi nhận, chưa đổi mã: sự kiện đến qua `standby` chưa được đánh dấu nguồn trong DB (cần thì thêm cột sau); `pages:resubscribe` thoát mã 2 cho mọi trường hợp chưa đăng ký được, chưa phân biệt lỗi tạm thời với lỗi cần kết nối lại.
+- **Điểm chưa xác minh cho module gửi tin sau này:** `message_id` do Send API trả về có bằng `mid` của echo tương ứng không. Mã Module 1 khử trùng echo theo `mid` (đúng với giả định đó); nếu hai giá trị khác nhau thì tin do SalesMind gửi sẽ vào DB hai lần (một lần lúc gửi, một lần qua echo) và cần khử trùng dự phòng như backfill.
+
+**Không làm (ngoài phạm vi Module 1):** gửi tin, kiểm tra cửa sổ 24 giờ, message tag, Zalo, `followup_task`, `proposal`, `bank_transactions`, `extraction`. Báo cáo cũng khuyên không hard-code quy tắc cửa sổ.
+
 ## Điểm Meta API (đối chiếu tài liệu chính thức ngày 2026-11-09)
 
 Trạng thái: **đã xác minh** = có trong tài liệu; **chưa xác minh** = tài liệu không nói, phải thử bằng Page thật (ghi rõ mốc làm).

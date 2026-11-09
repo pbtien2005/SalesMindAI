@@ -49,6 +49,19 @@ describe('loadEnv', () => {
     expect(() => loadEnv({ ...base, PUBLIC_BASE_URL: url })).toThrow(/PUBLIC_BASE_URL/);
   });
 
+  it('PAGE_INBOX_APP_IDS: bỏ trống thì dùng mặc định (cả dạng 14 và 15 chữ số)', () => {
+    expect(loadEnv(base).PAGE_INBOX_APP_IDS).toEqual(['263902037430900', '26390203743090']);
+    expect(loadEnv({ ...base, PAGE_INBOX_APP_IDS: '' }).PAGE_INBOX_APP_IDS).toEqual(['263902037430900', '26390203743090']);
+  });
+
+  it('PAGE_INBOX_APP_IDS: giá trị thật ghi đè mặc định, cắt khoảng trắng, nhận nhiều giá trị', () => {
+    expect(loadEnv({ ...base, PAGE_INBOX_APP_IDS: ' 111222333 , 444555666 ' }).PAGE_INBOX_APP_IDS).toEqual(['111222333', '444555666']);
+  });
+
+  it.each([['abc'], ['123,xyz'], ['12'], ['1234567890123456789012']])('PAGE_INBOX_APP_IDS: từ chối %s', (v) => {
+    expect(() => loadEnv({ ...base, PAGE_INBOX_APP_IDS: v })).toThrow(/PAGE_INBOX_APP_IDS/);
+  });
+
   it('FB_LOGIN_CONFIG_ID là tùy chọn', () => {
     expect(loadEnv(base).FB_LOGIN_CONFIG_ID).toBeUndefined();
     expect(loadEnv({ ...base, FB_LOGIN_CONFIG_ID: '9988' }).FB_LOGIN_CONFIG_ID).toBe('9988');

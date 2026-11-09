@@ -90,7 +90,10 @@ try {
 
 // Chỉ bắt đầu xử lý job sau khi server đã nhận request được.
 await startWebhookWorker(boss, async (data) => {
-  await processWebhookPayload(dbHandle.db, data.payload, app.log);
+  await processWebhookPayload(dbHandle.db, data.payload, app.log, {
+    // Phân loại tin do Page gửi theo app_id của echo.
+    sender: { ownAppId: env.FB_APP_ID, pageInboxAppIds: env.PAGE_INBOX_APP_IDS },
+  });
 });
 
 const backfillDeps: BackfillDeps = {

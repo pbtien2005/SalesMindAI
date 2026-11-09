@@ -17,6 +17,14 @@ const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull(
 
 export const pageStatus = pgEnum('page_status', ['active', 'token_invalid']);
 export const messageSource = pgEnum('message_source', ['webhook', 'backfill']);
+/** Hướng của tin: từ khách tới Page, hay từ Page tới khách (echo, hoặc tin Page gửi lấy qua backfill). */
+export const messageDirection = pgEnum('message_direction', ['inbound', 'outbound']);
+/**
+ * Ai gửi. `customer`: khách. Với tin của Page, dựa vào `app_id` trong echo:
+ * `page_app` (app của ta), `page_inbox` (người gõ tay ở Page Inbox), `page_other` (bot hoặc app khác),
+ * `page_unknown` (không có app_id, ví dụ tin lấy qua backfill).
+ */
+export const senderKind = pgEnum('sender_kind', ['customer', 'page_app', 'page_inbox', 'page_other', 'page_unknown']);
 
 export const tenants = pgTable('tenants', {
   id: id(),
@@ -64,8 +72,16 @@ export const conversations = pgTable(
     pageId: uuid('page_id').notNull(),
     /** Page-scoped ID của khách. */
     psid: text('psid').notNull(),
-    /** Thời điểm tin mới nhất (theo sent_at). Worker cập nhật bằng GREATEST() ở mốc 3. */
+    /** Thời điểm tin mới nhất theo sent_at, mọi hướng. Cập nhật bằng GREATEST() nên tin đến sai thứ tự không làm lùi. */
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+    /**
+     * Lần cuối KHÁCH có hành động mở cửa sổ nhắn tin: gửi tin, bấm nút (postback), thả cảm xúc,
+     * vào qua link m.me có ref (referral). Tin của Page không tính. Không hard-code cửa sổ 24 giờ ở đây:
+     * quy tắc cửa sổ do module gửi tin quyết định (báo cáo nghiên cứu: chưa xác minh hết).
+     */
+    lastUserInteractionAt: timestamp('last_user_interaction_at', { withTimezone: true }),
+    /** Lần cuối PAGE gửi tin (echo hoặc backfill), kể cả tin do nhân viên gõ ở Page Inbox. */
+    lastPageMessageAt: timestamp('last_page_message_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -87,8 +103,12 @@ export const messages = pgTable(
     tenantId: uuid('tenant_id').notNull(),
     pageId: uuid('page_id').notNull(),
     conversationId: uuid('conversation_id').notNull(),
-    /** `message.mid` của Meta: khóa khử trùng (idempotent). */
+    /** `message.mid` của Meta: khóa khử trùng (idempotent). Khóa ổn định để tham chiếu tin là `id` (UUID), không phải `mid`. */
     mid: text('mid').notNull().unique(),
+    direction: messageDirection('direction').notNull().default('inbound'),
+    senderKind: senderKind('sender_kind').notNull().default('customer'),
+    /** `message.app_id` của echo: app đã gửi tin. Null với tin của khách và tin lấy qua backfill. */
+    appId: text('app_id'),
     /** Null khi tin chỉ có attachment. */
     text: text('text'),
     attachments: jsonb('attachments'),
@@ -110,6 +130,34 @@ export const messages = pgTable(
     }),
     index('messages_conversation_sent_at_idx').on(t.conversationId, t.sentAt),
     index('messages_tenant_sent_at_idx').on(t.tenantId, t.sentAt),
+  ],
+);
+
+/**
+ * Cảnh báo hoặc khóa từ Meta về việc Page gửi tin (webhook `messaging_policy_enforcement`).
+ * `action`: warning, block hoặc unblock (tài liệu Meta); lưu dạng text để không vỡ nếu Meta thêm giá trị.
+ */
+export const pagePolicyEvents = pgTable(
+  'page_policy_events',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id').notNull(),
+    pageId: uuid('page_id').notNull(),
+    action: text('action').notNull(),
+    /** Lý do do Meta nêu; vắng khi `unblock`. */
+    reason: text('reason'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // Meta có thể gửi lại cùng một sự kiện: khử trùng theo (Page, thời điểm, hành động).
+    unique('page_policy_events_dedupe').on(t.pageId, t.occurredAt, t.action),
+    foreignKey({
+      name: 'page_policy_events_page_tenant_fk',
+      columns: [t.pageId, t.tenantId],
+      foreignColumns: [pages.id, pages.tenantId],
+    }),
+    index('page_policy_events_tenant_idx').on(t.tenantId, t.occurredAt),
   ],
 );
 
@@ -142,3 +190,4 @@ export type Tenant = typeof tenants.$inferSelect;
 export type Page = typeof pages.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+export type PagePolicyEvent = typeof pagePolicyEvents.$inferSelect;

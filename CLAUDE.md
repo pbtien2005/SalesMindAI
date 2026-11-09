@@ -18,7 +18,10 @@ Nguyên tắc sản phẩm:
 ## Quy tắc kỹ thuật bắt buộc
 - `POST /webhook` phải trả 200 trong 5 giây: chỉ lưu và đưa vào hàng đợi, xử lý nặng làm ở worker.
 - Giữ raw body để kiểm tra `X-Hub-Signature-256` (HMAC-SHA256 với `APP_SECRET`, so sánh timing-safe). Sai chữ ký trả 403.
-- Khử trùng theo `message.mid` (idempotent); sắp xếp theo `timestamp`; bỏ qua `is_echo`.
+- Khử trùng theo `message.mid` (idempotent); sắp xếp theo `timestamp`.
+- **Lưu cả tin do Page gửi (echo), không bỏ qua `is_echo`** (đổi theo báo cáo nghiên cứu, xem `doc/PLAN-sua-module1-theo-bao-cao.md`): Messenger gửi echo qua field riêng `message_echoes`, nên tin nhân viên gõ ở Page Inbox sẽ vô hình nếu bỏ qua, làm hỏng logic "bao lâu khách chưa được trả lời". Tin lưu kèm `direction` (inbound/outbound), `sender_kind` (customer, page_app, page_inbox, page_other, page_unknown) và `app_id`. Khách của một echo là người NHẬN.
+- `conversations.last_user_interaction_at` chỉ tính hành động của KHÁCH (tin, postback, reaction, referral); tin của Page không làm mới nó. Không hard-code cửa sổ nhắn tin 24 giờ ở Module 1: quy tắc cửa sổ do module gửi tin quyết định.
+- Khóa ổn định để tham chiếu một tin (ví dụ `message_id` trong prompt AI) là `messages.id` (UUID), không phải `mid`.
 - Không bỏ tin im lặng: Meta đã nhận 200 thì không gửi lại. Tin chưa lưu được phải retry rồi vào dead-letter, không được `return` lặng lẽ.
 - Không ghi query string của request vào log (chứa `hub.verify_token`, `code`/`state` OAuth); `buildApp` đã bỏ query khỏi log.
 - Không gửi tin nhắn cho khách (module này chỉ đọc).

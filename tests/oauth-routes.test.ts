@@ -8,7 +8,7 @@ import { createOAuthState } from '../src/auth/oauth-state.js';
 import { createTenant } from '../src/auth/tenants.js';
 import { createTokenCrypto, type TokenCrypto } from '../src/crypto/token-crypto.js';
 import { pages } from '../src/db/schema.js';
-import { GraphApiError, GraphClient } from '../src/meta/graph-client.js';
+import { GraphApiError, GraphClient, SUBSCRIBED_FIELDS } from '../src/meta/graph-client.js';
 import type { WebhookQueue } from '../src/queue/boss.js';
 import { API_VERSION, FB_APP_ID, FB_APP_SECRET, makeFakeFetch, metaError, type MetaHandler } from './helpers/fake-meta.js';
 import { openTestDb, truncateAll } from './helpers/test-db.js';
@@ -226,7 +226,9 @@ describe('GET /auth/facebook/callback: kết nối thành công', () => {
     const sub = meta.calls.filter((c) => c.path.endsWith('subscribed_apps'));
     expect(sub[0]!.params.get('access_token')).toBe('PAGE_TOKEN_A');
     expect(sub[1]!.params.get('access_token')).toBe('PAGE_TOKEN_B');
-    expect(sub[0]!.params.get('subscribed_fields')).toBe('messages');
+    // Đủ field cho Module 1, không chỉ `messages`: thiếu message_echoes thì tin nhân viên gõ ở Page Inbox vô hình trong DB.
+    expect(sub[0]!.params.get('subscribed_fields')!.split(',')).toEqual([...SUBSCRIBED_FIELDS]);
+    expect(sub[0]!.params.get('subscribed_fields')).toContain('message_echoes');
   });
 
   it('LƯU TRƯỚC, ĐĂNG KÝ SAU: lúc đăng ký webhook thì Page đã có trong DB', async () => {

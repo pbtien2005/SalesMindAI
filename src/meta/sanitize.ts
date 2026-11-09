@@ -17,3 +17,13 @@ export function stripNul(value: unknown): unknown {
   }
   return value;
 }
+
+/**
+ * `app_id` trong echo có thể là SỐ nguyên trong JSON. Số nguyên lớn hơn 2^53 (khoảng 9,0e15, tức từ 16 chữ
+ * số) mất độ chính xác khi `JSON.parse`, khiến `app_id` không còn khớp `FB_APP_ID` hay `PAGE_INBOX_APP_IDS` và
+ * tin của chính ta bị phân loại nhầm. Chuyển các giá trị `app_id` dài (16 chữ số trở lên) thành chuỗi TRƯỚC
+ * khi parse. Chỉ áp dụng cho khóa `"app_id"` thật: trong nội dung tin nhắn, dấu nháy bị escape (`\"`) nên không khớp.
+ */
+export function quoteLargeAppIds(rawJson: string): string {
+  return rawJson.replace(/("app_id"\s*:\s*)(\d{16,})/g, '$1"$2"');
+}

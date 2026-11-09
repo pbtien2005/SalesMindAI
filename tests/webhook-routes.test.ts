@@ -121,6 +121,17 @@ describe('POST /webhook', () => {
     expect(JSON.stringify(queue.jobs[0]!.payload)).toContain('"text":"ab"');
   });
 
+  it('app_id dạng số dài (16 chữ số trở lên) được giữ nguyên chính xác: JSON.parse thường làm tròn số quá 2^53', async () => {
+    const big = '9007199254740993'; // 2^53 + 1: JSON.parse trả 9007199254740992 nếu không xử lý trước
+    const raw = '{"object":"page","entry":[{"id":"P","messaging":[{"sender":{"id":"P"},"recipient":{"id":"U"},"timestamp":1700000000000,' +
+      '"message":{"mid":"m1","is_echo":true,"app_id":' + big + ',"text":"x"}}]}]}';
+    expect(String(JSON.parse(raw).entry[0].messaging[0].message.app_id)).not.toBe(big); // bằng chứng: parse thường làm mất chính xác
+    const res = await post(raw, { 'x-hub-signature-256': sign(raw) });
+    expect(res.statusCode).toBe(200);
+    const msg = (queue.jobs[0]!.payload as { entry: Array<{ messaging: Array<{ message: { app_id: unknown } }> }> }).entry[0]!.messaging[0]!.message;
+    expect(msg.app_id).toBe(big); // đã thành chuỗi nguyên vẹn
+  });
+
   it('chữ ký đúng nhưng body không phải JSON: 400, không vào hàng đợi', async () => {
     const raw = 'not json at all';
     const res = await post(raw, { 'x-hub-signature-256': sign(raw) });

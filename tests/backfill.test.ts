@@ -15,7 +15,7 @@ import { backfillOverview, isBackfillRunning } from '../src/backfill/status.js';
 import { createTokenCrypto } from '../src/crypto/token-crypto.js';
 import { conversations, messages, pages, tenants } from '../src/db/schema.js';
 import { GraphApiError, type GraphMessage } from '../src/meta/graph-client.js';
-import type { InboundMessage } from '../src/meta/parse-webhook.js';
+import type { ParsedMessage } from '../src/meta/parse-webhook.js';
 import { storeInbound } from '../src/workers/store-messages.js';
 import { openTestDb, truncateAll } from './helpers/test-db.js';
 
@@ -99,10 +99,12 @@ function deps(graph: BackfillDeps['graph'], queue: BackfillQueue = new FakeQueue
   return { db, graph, crypto, queue, log, pacingMs: 0, sleep: async () => {}, ...extra };
 }
 
-const gm = (id: string, fromId: string | null, text: string | null, atMs: number): GraphMessage => ({
+/** Một tin Graph. `toId` là người nhận (cần khi tin do Page gửi, để biết khách nào). */
+const gm = (id: string, fromId: string | null, text: string | null, atMs: number, toId: string | null = null): GraphMessage => ({
   id,
   createdAt: new Date(atMs),
   fromId,
+  toId,
   text,
 });
 
@@ -197,28 +199,77 @@ describe('handleBackfillPage', () => {
 describe('handleBackfillConversation', () => {
   const conv = 't_1';
 
-  it('lưu tin của khách, bỏ tin do Page gửi; đúng nội dung, thời điểm, hội thoại, nguồn backfill', async () => {
+  it('lưu cả tin của khách lẫn tin của Page (hướng outbound, page_unknown): đúng nội dung, thời điểm, hội thoại, nguồn backfill', async () => {
     const { page } = await seedPage();
     const { graph } = stubGraph({
       convMessages: { [conv]: ids(['m_3', T0 + 3000], ['m_2', T0 + 2000], ['m_1', T0 + 1000]) },
       details: {
         m_1: gm('m_1', 'PSID_A', 'Anh muốn mua 20 bộ, ngân sách 50 triệu', T0 + 1000),
-        m_2: gm('m_2', FB_PAGE, 'Dạ em gửi báo giá ạ', T0 + 2000),
+        m_2: gm('m_2', FB_PAGE, 'Dạ em gửi báo giá ạ', T0 + 2000, 'PSID_A'), // nhân viên trả lời: from là Page, to là khách
         m_3: gm('m_3', 'PSID_A', 'Cần trước thứ Sáu', T0 + 3000),
       },
     });
     const stats = await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: conv });
-    expect(stats).toMatchObject({ listed: 3, outbound: 1, stored: 2, unavailable: 0 });
+    expect(stats).toMatchObject({ listed: 3, outbound: 1, stored: 3, unavailable: 0, noRecipient: 0 });
 
     const rows = await db.select().from(messages).orderBy(asc(messages.sentAt));
-    expect(rows.map((r) => [r.mid, r.text, r.source])).toEqual([
-      ['m_1', 'Anh muốn mua 20 bộ, ngân sách 50 triệu', 'backfill'],
-      ['m_3', 'Cần trước thứ Sáu', 'backfill'],
+    expect(rows.map((r) => [r.mid, r.text, r.direction, r.senderKind, r.appId, r.source])).toEqual([
+      ['m_1', 'Anh muốn mua 20 bộ, ngân sách 50 triệu', 'inbound', 'customer', null, 'backfill'],
+      ['m_2', 'Dạ em gửi báo giá ạ', 'outbound', 'page_unknown', null, 'backfill'],
+      ['m_3', 'Cần trước thứ Sáu', 'inbound', 'customer', null, 'backfill'],
     ]);
     expect(rows[0]!.sentAt.getTime()).toBe(T0 + 1000);
+    expect(new Set(rows.map((r) => r.conversationId)).size).toBe(1); // cả hai bên cùng một hội thoại
     const [c] = await db.select().from(conversations);
     expect(c).toMatchObject({ psid: 'PSID_A', pageId: page.id });
     expect(c!.lastMessageAt!.getTime()).toBe(T0 + 3000);
+    expect(c!.lastUserInteractionAt!.getTime()).toBe(T0 + 3000); // tin cuối của khách
+    expect(c!.lastPageMessageAt!.getTime()).toBe(T0 + 2000); // tin cuối của Page
+  });
+
+  it('khách im sau khi nhân viên trả lời: last_user_interaction_at dừng ở tin cuối của khách, không bị tin của Page kéo lên', async () => {
+    const { page } = await seedPage();
+    const { graph } = stubGraph({
+      convMessages: { [conv]: ids(['m_2', T0 + 9000], ['m_1', T0 + 1000]) },
+      details: { m_1: gm('m_1', 'PSID_A', 'hỏi giá', T0 + 1000), m_2: gm('m_2', FB_PAGE, 'dạ 5 triệu ạ', T0 + 9000, 'PSID_A') },
+    });
+    await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: conv });
+    const [c] = await db.select().from(conversations);
+    expect(c!.lastUserInteractionAt!.getTime()).toBe(T0 + 1000);
+    expect(c!.lastPageMessageAt!.getTime()).toBe(T0 + 9000);
+  });
+
+  it('tin của Page mà Meta không cho biết người nhận: không gắn được vào hội thoại nên bỏ qua và đếm riêng', async () => {
+    const { page } = await seedPage();
+    const { graph } = stubGraph({
+      convMessages: { [conv]: ids(['m_2', T0 + 2000], ['m_1', T0 + 1000]) },
+      details: { m_1: gm('m_1', 'PSID_A', 'hỏi', T0 + 1000), m_2: gm('m_2', FB_PAGE, 'trả lời', T0 + 2000, null) },
+    });
+    const stats = await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: conv });
+    expect(stats).toMatchObject({ outbound: 1, noRecipient: 1, stored: 1 });
+    expect((await db.select().from(messages)).map((m) => m.mid)).toEqual(['m_1']);
+  });
+
+  it('tin của Page có "người nhận" lại là chính Page: không đoán, không tạo hội thoại mang PSID của Page', async () => {
+    const { page } = await seedPage();
+    const { graph } = stubGraph({
+      convMessages: { [conv]: ids(['m_1', T0]) },
+      details: { m_1: gm('m_1', FB_PAGE, 'trả lời', T0, FB_PAGE) },
+    });
+    const stats = await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: conv });
+    expect(stats).toMatchObject({ outbound: 1, noRecipient: 1, stored: 0 });
+    expect(await db.select().from(conversations)).toHaveLength(0);
+  });
+
+  it('tin của Page chỉ có ảnh (không text) không được lưu thành dòng rỗng', async () => {
+    const { page } = await seedPage();
+    const { graph } = stubGraph({
+      convMessages: { [conv]: ids(['m_1', T0]) },
+      details: { m_1: gm('m_1', FB_PAGE, null, T0, 'PSID_A') },
+    });
+    const stats = await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: conv });
+    expect(stats).toMatchObject({ noText: 1, outbound: 1, stored: 0 });
+    expect(await db.select().from(messages)).toHaveLength(0);
   });
 
   it(`chỉ xử lý ${RECENT_MESSAGE_LIMIT} tin gần nhất (Meta chỉ cho chi tiết chừng đó)`, async () => {
@@ -438,12 +489,12 @@ describe('handleBackfillConversation', () => {
 });
 
 describe('khử trùng dự phòng giữa backfill và webhook (khi id Graph khác mid webhook)', () => {
-  const inbound = (mid: string, text: string | null, atMs: number): InboundMessage => ({
-    fbPageId: FB_PAGE, psid: 'PSID_A', mid, text, attachments: null, sentAtMs: atMs,
+  const inbound = (mid: string, text: string | null, atMs: number, direction: 'inbound' | 'outbound' = 'inbound'): ParsedMessage => ({
+    fbPageId: FB_PAGE, psid: 'PSID_A', mid, direction, appId: null, text, attachments: null, sentAtMs: atMs,
   });
 
-  async function storeWebhook(page: { id: string; tenantId: string }, m: InboundMessage) {
-    await db.transaction((tx) => storeInbound(tx, [{ m, page }], 'webhook'));
+  async function storeWebhook(page: { id: string; tenantId: string }, m: ParsedMessage) {
+    await db.transaction((tx) => storeInbound(tx, [{ m, page, senderKind: m.direction === 'inbound' ? 'customer' : 'page_inbox' }], 'webhook'));
   }
 
   it('cùng nội dung, cách nhau dưới 2 giây, khác mid: bỏ qua bản backfill (không có hai dòng cho một tin)', async () => {
@@ -475,9 +526,32 @@ describe('khử trùng dự phòng giữa backfill và webhook (khi id Graph kh�
     await storeWebhook({ id: page.id, tenantId: tenant.id }, inbound('mid.webhook.img', null, T0));
     const pageRef = { id: page.id, tenantId: tenant.id };
     const r = await db.transaction((tx) =>
-      storeInbound(tx, [{ m: inbound('m_graph_img', null, T0 + 500), page: pageRef }], 'backfill', { heuristicDedupe: true }),
+      storeInbound(tx, [{ m: inbound('m_graph_img', null, T0 + 500), page: pageRef, senderKind: 'customer' }], 'backfill', { heuristicDedupe: true }),
     );
     expect(r).toMatchObject({ stored: 1, heuristicSkipped: 0 });
+  });
+
+  it('tin của khách và tin của Page giống hệt nhau cách nhau dưới 2 giây là HAI tin khác nhau (khác hướng): giữ cả hai', async () => {
+    const { page, tenant } = await seedPage();
+    await storeWebhook({ id: page.id, tenantId: tenant.id }, inbound('mid.webhook.in', 'ok', T0)); // khách nhắn "ok"
+    const { graph } = stubGraph({
+      convMessages: { t_1: ids(['m_graph_out', T0 + 500]) },
+      details: { m_graph_out: gm('m_graph_out', FB_PAGE, 'ok', T0 + 500, 'PSID_A') }, // nhân viên cũng đáp "ok"
+    });
+    const stats = await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: 't_1' });
+    expect(stats).toMatchObject({ stored: 1, heuristicSkipped: 0 });
+  });
+
+  it('tin của Page: backfill khớp một echo webhook đã có (khác mid, cùng hướng, cùng nội dung, trong 2 giây) thì không nhân đôi', async () => {
+    const { page, tenant } = await seedPage();
+    await storeWebhook({ id: page.id, tenantId: tenant.id }, inbound('mid.webhook.echo', 'Dạ em gửi báo giá', T0 + 1234, 'outbound'));
+    const { graph } = stubGraph({
+      convMessages: { t_1: ids(['m_graph_out', T0 + 1000]) },
+      details: { m_graph_out: gm('m_graph_out', FB_PAGE, 'Dạ em gửi báo giá', T0 + 1000, 'PSID_A') },
+    });
+    const stats = await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: 't_1' });
+    expect(stats).toMatchObject({ stored: 0, heuristicSkipped: 1 });
+    expect(await db.select().from(messages)).toHaveLength(1);
   });
 
   it('cùng thời điểm nhưng khác nội dung: giữ cả hai', async () => {
