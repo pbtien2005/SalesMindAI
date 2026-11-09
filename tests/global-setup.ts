@@ -45,6 +45,7 @@ export default async function setup(): Promise<void> {
     );
   }
   try {
+    await client.query('DROP SCHEMA IF EXISTS pgboss CASCADE');
     await client.query('DROP SCHEMA IF EXISTS drizzle CASCADE');
     await client.query('DROP SCHEMA public CASCADE');
     await client.query('CREATE SCHEMA public');

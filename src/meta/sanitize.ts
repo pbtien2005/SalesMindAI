@@ -1,0 +1,19 @@
+/**
+ * PostgreSQL không lưu được ký tự NUL (\u0000) trong text/jsonb. Payload chứa nó mà đi thẳng vào
+ * pg-boss (jsonb) hay vào bảng messages sẽ lỗi mãi mãi: route trả 5xx, Meta thử lại 36 giờ rồi bỏ
+ * (mất tin), hoặc cả batch tới 1000 sự kiện kẹt ở worker (poison message).
+ */
+export const NUL = '\u0000';
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** Bỏ mọi ký tự NUL khỏi chuỗi, khóa và giá trị lồng nhau. Không đổi các kiểu khác. */
+export function stripNul(value: unknown): unknown {
+  if (typeof value === 'string') return value.includes(NUL) ? value.replaceAll(NUL, '') : value;
+  if (Array.isArray(value)) return value.map(stripNul);
+  if (isRecord(value)) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [stripNul(k) as string, stripNul(v)]));
+  }
+  return value;
+}

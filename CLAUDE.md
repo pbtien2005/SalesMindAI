@@ -19,6 +19,8 @@ Nguyên tắc sản phẩm:
 - `POST /webhook` phải trả 200 trong 5 giây: chỉ lưu và đưa vào hàng đợi, xử lý nặng làm ở worker.
 - Giữ raw body để kiểm tra `X-Hub-Signature-256` (HMAC-SHA256 với `APP_SECRET`, so sánh timing-safe). Sai chữ ký trả 403.
 - Khử trùng theo `message.mid` (idempotent); sắp xếp theo `timestamp`; bỏ qua `is_echo`.
+- Không bỏ tin im lặng: Meta đã nhận 200 thì không gửi lại. Tin chưa lưu được phải retry rồi vào dead-letter, không được `return` lặng lẽ.
+- Không ghi query string của request vào log (chứa `hub.verify_token`, `code`/`state` OAuth); `buildApp` đã bỏ query khỏi log.
 - Không gửi tin nhắn cho khách (module này chỉ đọc).
 - Page token mã hóa khi lưu (AES-256-GCM); không log token; không log nội dung tin nhắn ở mức info.
 - Không hard-code secret; mọi cấu hình qua `.env` (mẫu: `.env.example`).
