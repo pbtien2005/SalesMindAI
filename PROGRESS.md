@@ -11,7 +11,7 @@ Kế hoạch chi tiết: [doc/PLAN-module1.md](doc/PLAN-module1.md).
 | 2 | DB (Drizzle) và mã hóa Page token (AES-256-GCM) | xong | 2026-11-09 | `npm run typecheck` sạch; `npm test` 36/36 đạt (token-crypto 16, db 15, env 4, healthz 1) trên Postgres 18.6 của Docker. `db:migrate` chạy được 2 lần liên tiếp (idempotent) và từ thư mục khác. `code-review` (medium) 9 phát hiện: đã sửa 8 (khóa ngoại ghép tenant/page/conversation, handler lỗi pool, đường dẫn migration, bỏ credentials hard-code khỏi `drizzle.config.ts`, `global-setup` tự tạo DB test, kiểm tra khóa base64 chặt, `truncateAll` động, index FK), hoãn 1 sang mốc 3 (`last_message_at` chỉ có đường ghi khi có worker). Đổi cổng Postgres Docker sang 5433 vì PostgreSQL cài sẵn trên máy chiếm 5432. |
 | 3 | Webhook, kiểm tra chữ ký, khử trùng theo message.mid | xong | 2026-11-09 | `npm run typecheck` sạch; `npm test` 105/105 đạt (chạy 3 lần liên tiếp, không flaky), gồm signature 15, parse 18, route 19, toàn tuyến Postgres + pg-boss thật 17. Smoke test với server thật (tiến trình riêng, DB dev): GET xác minh 200/403; POST chữ ký đúng 200 trong 17–54 ms; gửi lại cùng payload vẫn 1 dòng; chữ ký sai, toàn số 0, thiếu đều 403; echo bị bỏ; tiếng Việt qua body `\u`-escape đúng; log không chứa nội dung tin, PSID, secret, chữ ký. Cổng bị chiếm thì thoát sạch với mã 1. Mutation: phá `ON CONFLICT` thì test khử trùng đỏ. `code-review` (medium) 7 phát hiện: sửa 6, giữ 1 (xem dưới). |
 | 4 | Kết nối Page thật | đang làm (code xong, chờ bạn kiểm tra với Page thật) | 2026-11-09 | **Đã có bằng chứng:** `npm run typecheck` sạch; `npm test` 187/187 đạt, chạy 2 lần liên tiếp (graph-client 22, oauth-routes 36, oauth-state 16, env 12 và các file cũ). Mutation: bỏ ràng buộc nonce của cookie thì 4 test đỏ; bỏ `setWhere` (ghi đè Page tenant khác) thì 1 test đỏ; bỏ `subscribedAt: null` khi kết nối lại thì 1 test đỏ. Server thật + CLI: `tenant:create` in liên kết; `/auth/facebook/start` 302 sang Facebook đúng `client_id`, `redirect_uri`, `state`, `scope`; callback không cookie 400; trình duyệt khác mở cùng state 400; phát lại 400; **gọi Meta thật với code và App ID giả: Meta trả HTTP 400, mã 101, `OAuthException`, client parse đúng và trả trang 502**; log không chứa state, code, secret. `code-review` 2 lượt: 18 phát hiện, sửa 14, giữ 4 có chủ ý. **Chưa có bằng chứng:** đăng nhập Facebook, lưu Page, đăng ký webhook, nhận tin bằng Page thật. Làm theo [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md) rồi báo kết quả. |
-| 5 | Backfill tin cũ | chưa làm | | |
+| 5 | Backfill tin cũ | đang làm (code xong, chờ thử với Page thật) | 2026-11-09 | **Đã có bằng chứng:** `npm run typecheck` sạch; `npm test` 236/236 đạt, chạy 2 lần liên tiếp (backfill 32, backfill chạy thật với pg-boss 7, graph-client 32). 8 mutation đều làm test đỏ (mất phần đã lấy khi bị giới hạn tốc độ, lưu cả tin của Page, bỏ giới hạn 20 tin, tắt khử trùng dự phòng, bỏ tự sắp xếp, nuốt lỗi 5xx, khử trùng tin không có text, lưu tin không có text). CLI thật: `backfill` xếp việc, lần hai báo "đã có việc chờ"; `backfill:status` đúng. **Server thật + Meta thật với token giả:** Graph API trả mã 190, Page bị đánh dấu `token_invalid`, trạng thái `failed`, không retry. `code-review`: 10 phát hiện, sửa 9, giữ 1. **Chưa có bằng chứng:** lấy tin thật từ một Page thật (cần bạn). |
 | 6 | Quan sát (log, metric), README, review | chưa làm | | |
 
 ## Điểm Meta API (đối chiếu tài liệu chính thức ngày 2026-11-09)
@@ -38,6 +38,28 @@ Trạng thái: **đã xác minh** = có trong tài liệu; **chưa xác minh** =
 - **Cấu hình queue không cập nhật khi đã tồn tại:** `createBoss` giờ gọi `updateQueue` cho queue có sẵn. `retryDelayMax` không sửa được qua `updateQueue` (giới hạn của pg-boss).
 
 Giữ nguyên có chủ ý: `stripNul` chạy ở cả route và worker. Lần ở route bắt buộc (pg-boss lưu jsonb); lần ở worker là phòng thủ, chỉ chạy trên trường đã rút ra nên rẻ.
+
+## Quyết định và lỗi phát hiện khi làm mốc 5
+
+- **Cách chạy:** `npm run cli -- backfill [<fbPageId>] [--force]` xếp việc; **server** (`npm run dev`) mới xử lý. Job liệt kê một trang hội thoại, lưu con trỏ vào `pages.backfill_state`, rồi xếp job trang kế tiếp và mỗi hội thoại một job. Chạy lại được, không tạo trùng.
+- **Chỉ phục hồi tối đa 20 tin gần nhất mỗi hội thoại** (giới hạn của Meta, đã nêu ở điểm 4). Tin cũ hơn không lấy lại được.
+- **Tin không có text (chỉ có ảnh) KHÔNG được backfill:** Conversations API không cho lấy attachment theo tài liệu, dòng lưu ra sẽ rỗng và không phân biệt được với tin trống. Ảnh của khách vẫn vào qua webhook.
+- **Khử trùng dự phòng:** chưa biết `id` của Conversations API có trùng `mid` của webhook không (điểm 1). Nếu trùng, mọi thứ dùng `ON CONFLICT (mid)`. Nếu không, tin backfill khớp một tin webhook (cùng hội thoại, cách tối đa 2 giây, cùng text khác rỗng) bị bỏ qua và có cảnh báo trong log. Đánh đổi: hai tin giống hệt nhau trong 2 giây mà webhook bỏ lỡ cái thứ hai sẽ bị coi là trùng.
+- **Không tin vào thứ tự Meta trả:** tự sắp theo `created_time` rồi mới lấy 20 tin mới nhất (nếu Meta trả cũ nhất trước thì cắt theo thứ tự đó sẽ giữ đúng những tin Meta báo đã xóa).
+- **Lỗi phân loại thế nào:** 190 thì đánh dấu `token_invalid` và dừng (không retry); giới hạn tốc độ, mạng, 5xx, phản hồi sai dạng thì ném lỗi để pg-boss retry có backoff (phần đã lấy được vẫn được lưu); chỉ lỗi 4xx trên MỘT tin mới coi là "tin không lấy được".
+- **Lỗi ghi DB lúc giữ phần đã lấy không được che lỗi Meta gốc** (đặc biệt 190: nếu che thì Page không bao giờ bị đánh dấu và mọi job sau vẫn gọi Meta bằng token hỏng). `code-review` chỉ ra.
+- **Hàng đợi backfill dùng chính sách `short` + `singletonKey`:** mỗi Page hoặc hội thoại chỉ có một job đang chờ, nên chạy backfill hai lần không nhân đôi việc. CLI không chạy chồng lên backfill đang chạy (cập nhật trong 30 phút) trừ khi dùng `--force`.
+- **Số liệu hàng đợi của pg-boss có thể trễ tới ~1 phút** ngay cả với `force: true` (nó tái dùng kết quả tính trong phút gần nhất). Phát hiện khi smoke test, job đã `completed` mà thống kê vẫn báo chờ 1.
+- **Lỗi thật tìm ra:** `backfill:status` ban đầu dùng truy vấn con tương quan của Drizzle (cùng lỗi như `tenant:list`: bỏ tên bảng, luôn ra 0); đã viết lại bằng truy vấn nhóm và có test.
+
+Giữ nguyên có chủ ý: hạn `expireInSeconds: 300` cho job hội thoại (20 lời gọi, mỗi lời gọi timeout 10 giây, tối đa khoảng 200 giây).
+
+### Điểm Meta chưa xác minh, thêm ở mốc 5 (cần Page thật)
+
+- `id` tin của Conversations API có trùng `mid` của webhook không (điểm 1). Cách kiểm: sau khi có tin qua webhook, chạy backfill rồi xem log có cảnh báo "khác mid" không, hoặc `select count(*)` so với số tin thật.
+- Thứ tự tin trong `?fields=messages`, và cách phân trang danh sách tin (tài liệu không nói). Client không tự đi tiếp mà ghi cờ `truncated` cùng cảnh báo khi Meta báo còn trang sau.
+- Kích thước trang và cách phân trang của `GET /{page-id}/conversations`, mã lỗi giới hạn tốc độ thực tế (ta coi 4, 17, 32, 613, 80001 là giới hạn tốc độ; chỉ 80001 có trong tài liệu).
+- Mã lỗi Meta trả cho tin quá cũ ("đã xóa"): ta coi mọi lỗi 4xx trên một tin là "không lấy được".
 
 ## Quyết định và lỗi phát hiện khi làm mốc 4
 

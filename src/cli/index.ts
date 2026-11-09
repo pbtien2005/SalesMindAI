@@ -1,12 +1,29 @@
+import { and, eq } from 'drizzle-orm';
+import type { BackfillState } from '../backfill/backfill.js';
+import { backfillOverview, isBackfillRunning } from '../backfill/status.js';
 import { newConnectUrl, createTenant, listTenants, tenantExists } from '../auth/tenants.js';
 import { loadEnv } from '../config/env.js';
 import { createDb } from '../db/client.js';
+import { pages } from '../db/schema.js';
+import {
+  BACKFILL_CONVERSATION_QUEUE,
+  BACKFILL_DEAD_QUEUE,
+  BACKFILL_PAGE_QUEUE,
+  createBackfillQueue,
+  createBoss,
+} from '../queue/boss.js';
 
 const USAGE = `Dùng: npm run cli -- <lệnh>
 
   tenant:create <tên>         Tạo doanh nghiệp (tenant) và in liên kết kết nối Page
   tenant:connect-url <id>     Tạo liên kết kết nối Page mới cho tenant đã có
   tenant:list                 Liệt kê tenant và số Page đã kết nối
+  backfill [<fbPageId>] [--force]  Đưa việc lấy lại tin cũ vào hàng đợi (mọi Page đang dùng được, hoặc một Page).
+                              Bỏ qua Page đang có backfill chạy dở, trừ khi dùng --force
+  backfill:status             Xem tiến độ backfill và độ sâu hàng đợi
+
+Lệnh backfill chỉ xếp việc vào hàng đợi; server (npm run dev) mới là nơi xử lý. Meta chỉ cho lấy chi
+tiết 20 tin gần nhất của mỗi hội thoại nên đây không phải là khôi phục toàn bộ lịch sử.
 
 Liên kết kết nối dùng được MỘT lần và hết hạn sau 10 phút. Gửi cho người quản lý Page,
 họ mở bằng trình duyệt và đăng nhập Facebook để cấp quyền.`;
@@ -41,6 +58,56 @@ async function main(): Promise<number> {
         const rows = await listTenants(db);
         if (rows.length === 0) console.log('Chưa có tenant nào.');
         for (const r of rows) console.log(`${r.id}  ${r.pages} Page  ${r.name}`);
+        return 0;
+      }
+      case 'backfill': {
+        const force = args.includes('--force');
+        const target = args.find((a) => !a.startsWith('--'));
+        const rows = await db
+          .select({ id: pages.id, fbPageId: pages.fbPageId, name: pages.name, state: pages.backfillState })
+          .from(pages)
+          .where(target ? and(eq(pages.status, 'active'), eq(pages.fbPageId, target)) : eq(pages.status, 'active'));
+        if (rows.length === 0) {
+          throw new Error(target ? `Không có Page đang dùng được với ID ${target}.` : 'Chưa có Page nào đang dùng được.');
+        }
+        const boss = await createBoss(env.DATABASE_URL);
+        try {
+          const queue = createBackfillQueue(boss);
+          for (const p of rows) {
+            if (!force && isBackfillRunning(p.state as BackfillState | null)) {
+              console.log(`Bỏ qua Page "${p.name}" (${p.fbPageId}): backfill đang chạy. Dùng --force nếu chắc chắn muốn chạy chồng.`);
+              continue;
+            }
+            const queued = await queue.enqueuePage({ pageId: p.id });
+            console.log(
+              queued
+                ? `Đã xếp backfill cho Page "${p.name}" (${p.fbPageId}).`
+                : `Page "${p.name}" (${p.fbPageId}) đã có việc backfill đang chờ, không xếp thêm.`,
+            );
+          }
+        } finally {
+          await boss.stop({ graceful: true, timeout: 5000 });
+        }
+        console.log('Server (npm run dev) sẽ xử lý. Xem tiến độ: npm run cli -- backfill:status');
+        return 0;
+      }
+      case 'backfill:status': {
+        const rows = await backfillOverview(db);
+        if (rows.length === 0) console.log('Chưa có Page nào.');
+        for (const r of rows) {
+          const s = r.state;
+          const st = s ? `${s.status}, ${s.conversationsEnqueued} hội thoại, cập nhật ${s.updatedAt}${s.reason ? `, lý do: ${s.reason}` : ''}` : 'chưa chạy';
+          console.log(`${r.name} (${r.fbPageId}) [token ${r.status}] backfill: ${st}; đã lưu từ backfill: ${r.stored} tin`);
+        }
+        const boss = await createBoss(env.DATABASE_URL);
+        try {
+          for (const q of [BACKFILL_PAGE_QUEUE, BACKFILL_CONVERSATION_QUEUE, BACKFILL_DEAD_QUEUE]) {
+            const [st] = await boss.getQueueStats(q, { force: true }); // force: không dùng cache (có thể trễ tới ~1 giờ)
+            console.log(`Hàng đợi ${q} (số liệu có thể trễ tới ~1 phút): chờ ${st?.queuedCount ?? 0}, đang chạy ${st?.activeCount ?? 0}, lỗi ${st?.failedCount ?? 0}`);
+          }
+        } finally {
+          await boss.stop({ graceful: true, timeout: 5000 });
+        }
         return 0;
       }
       default:

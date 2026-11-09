@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { GraphApiError, GraphClient, LOGIN_SCOPES } from '../src/meta/graph-client.js';
+import { GraphApiError, GraphClient, LOGIN_SCOPES, parseGraphTime } from '../src/meta/graph-client.js';
 import { API_VERSION, FB_APP_ID, FB_APP_SECRET, makeFakeFetch, metaError, type MetaHandler } from './helpers/fake-meta.js';
 
 const clientWith = (handler: MetaHandler, extra: { timeoutMs?: number } = {}) => {
@@ -225,5 +225,113 @@ describe('GraphClient: xử lý lỗi', () => {
   it('HTTP 200 nhưng thân là lỗi (Meta đôi khi làm vậy) vẫn là lỗi', async () => {
     const { client } = clientWith(() => ({ status: 200, body: { error: { message: 'oops', code: 1 } } }));
     await expect(client.listPages('T')).rejects.toBeInstanceOf(GraphApiError);
+  });
+});
+
+describe('GraphClient: Conversations API (backfill)', () => {
+  it('listConversations: một trang, đúng đường dẫn và tham số, kèm after khi còn trang sau', async () => {
+    const { client, calls } = clientWith(() => ({
+      body: {
+        data: [{ id: 't_1', updated_time: '2026-11-09T07:12:30+0000' }, { id: 't_2' }],
+        paging: { cursors: { after: 'CUR_A' }, next: 'https://graph.facebook.com/next' },
+      },
+    }));
+    const r = await client.listConversations('PAGE_TOKEN', 'PAGE_9', { after: 'PREV', limit: 10 });
+    expect(r).toEqual({
+      conversations: [
+        { id: 't_1', updatedTime: '2026-11-09T07:12:30+0000' },
+        { id: 't_2', updatedTime: null },
+      ],
+      after: 'CUR_A',
+    });
+    expect(calls[0]).toMatchObject({ method: 'GET', host: 'graph.facebook.com', path: 'PAGE_9/conversations' });
+    expect(calls[0]!.params.get('platform')).toBe('messenger');
+    expect(calls[0]!.params.get('after')).toBe('PREV');
+    expect(calls[0]!.params.get('limit')).toBe('10');
+    expect(calls[0]!.params.get('access_token')).toBe('PAGE_TOKEN');
+    expect(calls[0]!.params.get('appsecret_proof')).toBeTruthy();
+  });
+
+  it('listConversations: trang cuối (không có paging.next) thì không có after; không đi theo URL next', async () => {
+    const { client, calls } = clientWith(() => ({ body: { data: [{ id: 't_1' }], paging: { cursors: { after: 'X' } } } }));
+    const r = await client.listConversations('T', 'P');
+    expect(r.after).toBeUndefined();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('listConversationMessages: trả id và thời điểm, bỏ tin có created_time sai', async () => {
+    const { client, calls } = clientWith(() => ({
+      body: {
+        id: 't_1',
+        messages: {
+          data: [
+            { id: 'm_new', created_time: '2026-11-09T07:12:30+0000' },
+            { id: 'm_bad', created_time: 'không phải ngày' },
+            { id: 'm_old', created_time: '2026-11-08T01:00:00+0000' },
+          ],
+        },
+      },
+    }));
+    const { messages: r, hasMore } = await client.listConversationMessages('T', 't_1');
+    expect(hasMore).toBe(false);
+    expect(r.map((m) => m.id)).toEqual(['m_new', 'm_old']);
+    expect(r[0]!.createdAt.toISOString()).toBe('2026-11-09T07:12:30.000Z');
+    expect(calls[0]).toMatchObject({ method: 'GET', path: 't_1' });
+    expect(calls[0]!.params.get('fields')).toBe('messages');
+  });
+
+  it('listConversationMessages: hội thoại chưa có messages thì trả mảng rỗng', async () => {
+    const { client } = clientWith(() => ({ body: { id: 't_1' } }));
+    expect(await client.listConversationMessages('T', 't_1')).toEqual({ messages: [], hasMore: false });
+  });
+
+  it('listConversationMessages: Meta báo còn trang sau thì hasMore=true (không tự đi tiếp vì tài liệu không mô tả cách phân trang)', async () => {
+    const { client, calls } = clientWith(() => ({
+      body: { id: 't_1', messages: { data: [{ id: 'm_1', created_time: '2026-11-09T07:12:30+0000' }], paging: { next: 'https://graph.facebook.com/next' } } },
+    }));
+    const r = await client.listConversationMessages('T', 't_1');
+    expect(r.hasMore).toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('getMessage: chỉ xin các field có trong tài liệu và bỏ qua field thừa như tên hay email', async () => {
+    const { client, calls } = clientWith(() => ({
+      body: {
+        id: 'm_1',
+        created_time: '2026-11-09T07:12:30+0000',
+        from: { id: 'PSID_1', name: 'Nguyễn Văn A', email: 'a@example.com' },
+        message: 'Anh muốn mua 20 bộ',
+      },
+    }));
+    const m = await client.getMessage('T', 'm_1');
+    expect(m).toEqual({ id: 'm_1', createdAt: new Date('2026-11-09T07:12:30.000Z'), fromId: 'PSID_1', text: 'Anh muốn mua 20 bộ' });
+    expect(JSON.stringify(m)).not.toContain('example.com'); // không giữ dữ liệu cá nhân không cần
+    expect(calls[0]!.params.get('fields')).toBe('id,created_time,from,message');
+    expect(calls[0]!.params.get('fields')).not.toContain('attachments'); // tài liệu không nêu field này
+  });
+
+  it('getMessage: tin chỉ có ảnh (không có message) thì text null; mid có ký tự đặc biệt được mã hóa trong đường dẫn', async () => {
+    const { client, calls } = clientWith(() => ({ body: { id: 'mid.$cAAJ', created_time: '2026-11-09T07:12:30+0000', from: { id: 'U' } } }));
+    const m = await client.getMessage('T', 'mid.$cAAJ');
+    expect(m.text).toBeNull();
+    expect(calls[0]!.path).toBe('mid.%24cAAJ');
+  });
+
+  it('getMessage: thiếu created_time hợp lệ hoặc sai dạng thì ném GraphApiError', async () => {
+    const { client } = clientWith(() => ({ body: { id: 'm', created_time: 'xyz' } }));
+    await expect(client.getMessage('T', 'm')).rejects.toBeInstanceOf(GraphApiError);
+  });
+
+  it('parseGraphTime: chuẩn hóa độ lệch múi giờ kiểu +0000 và nhận ISO chuẩn', () => {
+    expect(parseGraphTime('2026-11-09T07:12:30+0000')!.toISOString()).toBe('2026-11-09T07:12:30.000Z');
+    expect(parseGraphTime('2026-11-09T14:12:30+0700')!.toISOString()).toBe('2026-11-09T07:12:30.000Z');
+    expect(parseGraphTime('2026-11-09T07:12:30-0530')!.toISOString()).toBe('2026-11-09T12:42:30.000Z');
+    expect(parseGraphTime('2026-11-09T07:12:30.123Z')!.toISOString()).toBe('2026-11-09T07:12:30.123Z');
+    expect(parseGraphTime('hôm qua')).toBeNull();
+  });
+
+  it('GraphApiError.isRateLimited nhận các mã giới hạn tốc độ và không nhầm với lỗi khác', () => {
+    for (const code of [4, 17, 32, 613, 80001]) expect(new GraphApiError('x', 400, code, null, null).isRateLimited).toBe(true);
+    for (const code of [100, 190, 200, null]) expect(new GraphApiError('x', 400, code, null, null).isRateLimited).toBe(false);
   });
 });

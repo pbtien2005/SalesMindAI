@@ -68,6 +68,7 @@ Test: state sai, đã dùng, hết hạn đều bị từ chối; token lưu d�
 Kiểm tra tay: nhắn từ tài khoản Tester vào Page thử nghiệm, dòng mới xuất hiện trong `messages`.
 
 ### Mốc 5: Backfill tin cũ
+(Đã làm xong phần code; các quyết định thực tế và điểm chưa xác minh nằm trong PROGRESS.md. Khác kế hoạch ban đầu: tin không có text không được backfill; hàng đợi dùng chính sách `short` + `singletonKey`; tự sắp theo `created_time` thay vì tin vào thứ tự của Meta.)
 Giới hạn thực tế theo tài liệu: chi tiết tin nhắn chỉ lấy được cho **20 tin gần nhất** mỗi cuộc hội thoại (tin cũ hơn trả lỗi "đã xóa"); hội thoại trong thư mục Requests không hoạt động 30 ngày không được trả về. Nên backfill chỉ phục hồi tối đa 20 tin gần nhất mỗi cuộc hội thoại.
 - Duyệt `GET /{page-id}/conversations?platform=messenger`, rồi `GET /{conversation-id}?fields=messages` (chỉ trả `id`, `created_time`), rồi `GET /{message-id}?fields=id,created_time,from,to,message` cho từng tin. Phân trang: tài liệu không nói, xử lý `paging.next` nếu có và kiểm tra bằng Page thật.
 - Mỗi conversation là một job pg-boss; backoff khi chạm giới hạn tốc độ (tài liệu không nêu hạn mức, phải đọc mã lỗi và header khi gặp); lưu con trỏ vào `pages.backfill_state` để chạy lại được; bỏ tin có `from.id` là chính Page.

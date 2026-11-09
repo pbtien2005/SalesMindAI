@@ -3,13 +3,22 @@ import { loadEnv } from './config/env.js';
 import { createTokenCrypto } from './crypto/token-crypto.js';
 import { createDb } from './db/client.js';
 import { GraphClient } from './meta/graph-client.js';
-import { createBoss, createWebhookQueue, startWebhookWorker } from './queue/boss.js';
+import { handleBackfillConversation, handleBackfillPage, type BackfillDeps } from './backfill/backfill.js';
+import { createBackfillQueue, createBoss, createWebhookQueue, startBackfillWorkers, startWebhookWorker } from './queue/boss.js';
 import { processWebhookPayload } from './workers/process-webhook.js';
 
 const env = loadEnv();
 
 const dbHandle = createDb(env.DATABASE_URL);
 const boss = await createBoss(env.DATABASE_URL);
+
+const graph = new GraphClient({
+  apiVersion: env.GRAPH_API_VERSION,
+  appId: env.FB_APP_ID,
+  appSecret: env.APP_SECRET,
+  ...(env.FB_LOGIN_CONFIG_ID ? { loginConfigId: env.FB_LOGIN_CONFIG_ID } : {}),
+});
+const crypto = createTokenCrypto(env.TOKEN_ENC_KEY);
 
 const app = buildApp(
   { logger: { level: env.NODE_ENV === 'production' ? 'info' : 'debug' } },
@@ -19,13 +28,8 @@ const app = buildApp(
     queue: createWebhookQueue(boss),
     oauth: {
       db: dbHandle.db,
-      graph: new GraphClient({
-        apiVersion: env.GRAPH_API_VERSION,
-        appId: env.FB_APP_ID,
-        appSecret: env.APP_SECRET,
-        ...(env.FB_LOGIN_CONFIG_ID ? { loginConfigId: env.FB_LOGIN_CONFIG_ID } : {}),
-      }),
-      crypto: createTokenCrypto(env.TOKEN_ENC_KEY),
+      graph,
+      crypto,
       publicBaseUrl: env.PUBLIC_BASE_URL,
     },
   },
@@ -63,4 +67,16 @@ try {
 // Chỉ bắt đầu xử lý job sau khi server đã nhận request được.
 await startWebhookWorker(boss, async (data) => {
   await processWebhookPayload(dbHandle.db, data.payload, app.log);
+});
+
+const backfillDeps: BackfillDeps = {
+  db: dbHandle.db,
+  graph,
+  crypto,
+  queue: createBackfillQueue(boss),
+  log: app.log,
+};
+await startBackfillWorkers(boss, {
+  page: (job) => handleBackfillPage(backfillDeps, job),
+  conversation: async (job) => void (await handleBackfillConversation(backfillDeps, job)),
 });

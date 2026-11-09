@@ -47,6 +47,21 @@ Kiểm tra:
 - Trả lời tin đó từ hộp thư của Page: **không** tạo thêm dòng nào (tin của Page bị bỏ).
 - Gửi một ảnh: dòng có `text` rỗng và cột `attachments` chứa metadata.
 
+## C2. Thử backfill (lấy lại tin cũ)
+
+Trước tiên nhắn vài tin vào Page từ tài khoản tester, **chờ vài phút**, rồi (khi `npm run dev` đang chạy):
+
+```
+npm run cli -- backfill
+npm run cli -- backfill:status
+```
+
+Mong đợi: trạng thái chuyển `running` rồi `listed`, `đã lưu từ backfill` tăng với các tin chưa có từ webhook. Để thử đúng việc "bù tin bị lỡ", tắt server, nhắn thêm vài tin, bật lại server rồi chạy backfill: các tin nhắn trong lúc server tắt sẽ xuất hiện với `source = backfill`.
+
+Hai điều cần xác nhận:
+- **Không có tin trùng** giữa tin đã vào qua webhook và qua backfill: `select mid, source, count(*) from messages group by mid, source` rồi so với số tin bạn thật sự đã nhắn. Nếu bị gấp đôi, id của Conversations API khác mid của webhook: báo lại cho tôi và gửi log (có cảnh báo "khác mid").
+- Chỉ lấy được **20 tin gần nhất** mỗi hội thoại, và tin chỉ có ảnh không được backfill (ảnh vẫn vào qua webhook).
+
 ## D. Báo lại cho tôi
 
 Cho tôi biết kết quả từng bước A đến C và, nếu có lỗi, chép nguyên văn thông báo (hộp thoại Facebook, trang kết quả, hoặc log server). Log server không chứa token hay nội dung tin nên chép được. Đừng gửi App Secret hay token.
@@ -71,3 +86,4 @@ Ghi lại để bạn biết kết quả nào là "xác nhận" và kết quả 
 - Có cần `business_management` hay `config_id` cho app của bạn không.
 - `code` của OAuth có dùng được một lần không (tài liệu không nói).
 - Hành vi ở chế độ Development với tài khoản tester.
+- Với backfill: `id` tin có trùng `mid` webhook không; thứ tự và cách phân trang của danh sách tin; mã lỗi khi bị giới hạn tốc độ và khi tin quá cũ.

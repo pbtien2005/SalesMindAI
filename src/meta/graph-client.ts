@@ -31,7 +31,18 @@ export class GraphApiError extends Error {
   get isTokenInvalid(): boolean {
     return this.code === 190;
   }
+
+  /**
+   * Chạm giới hạn tốc độ: nên chờ rồi thử lại, không phải lỗi vĩnh viễn.
+   * 80001 do tài liệu `subscribed_apps` nêu ("Too many calls to this Page account"); 4, 17, 32, 613
+   * là các mã giới hạn tốc độ thường gặp của Graph API theo hiểu biết chung, CHƯA đối chiếu tài liệu.
+   */
+  get isRateLimited(): boolean {
+    return this.code !== null && RATE_LIMIT_CODES.has(this.code);
+  }
 }
+
+const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80001]);
 
 export interface GraphClientOptions {
   /** Ví dụ `v26.0`. */
@@ -66,6 +77,54 @@ const accountsResponse = z.object({
     .object({ cursors: z.object({ after: z.string().optional() }).optional(), next: z.string().optional() })
     .optional(),
 });
+
+const conversationsResponse = z.object({
+  data: z.array(z.object({ id: z.string().min(1), updated_time: z.string().optional() })),
+  paging: z
+    .object({ cursors: z.object({ after: z.string().optional() }).optional(), next: z.string().optional() })
+    .optional(),
+});
+
+// `GET /{conversation-id}?fields=messages`: tài liệu nói danh sách chỉ có `id` và `created_time`.
+const conversationMessagesResponse = z.object({
+  messages: z
+    .object({
+      data: z.array(z.object({ id: z.string().min(1), created_time: z.string() })),
+      paging: z.object({ next: z.string().optional() }).optional(),
+    })
+    .optional(),
+});
+
+const messageResponse = z.object({
+  id: z.string().min(1),
+  created_time: z.string(),
+  from: z.object({ id: z.string().min(1) }).optional(),
+  message: z.string().optional(),
+});
+
+export interface ConversationRef {
+  id: string;
+  updatedTime: string | null;
+}
+
+/** Chi tiết một tin nhắn lấy từ Conversations API. */
+export interface GraphMessage {
+  id: string;
+  createdAt: Date;
+  /** ID người gửi (PSID của khách, hoặc ID Page nếu là tin do Page gửi). */
+  fromId: string | null;
+  text: string | null;
+}
+
+/**
+ * `created_time` của Graph có dạng `2026-11-09T07:12:30+0000` (độ lệch múi giờ không có dấu hai chấm),
+ * V8 vẫn đọc được nhưng chuẩn ISO thì cần `+00:00`; chuẩn hóa để không phụ thuộc hành vi riêng của V8.
+ */
+export function parseGraphTime(value: string): Date | null {
+  const normalized = value.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 const errorBody = z.object({
   error: z.object({
@@ -165,6 +224,71 @@ export class GraphClient {
     }
     // Còn trang chưa đọc: báo lỗi thay vì lặng lẽ trả danh sách thiếu Page.
     throw new GraphApiError(`Tài khoản có quá nhiều Page (hơn ${MAX_ACCOUNT_PAGES * 100}).`, 200, null, null, null);
+  }
+
+  /**
+   * MỘT trang hội thoại của Page (Messenger). Trả thêm `after` nếu còn trang sau; người gọi tự lưu
+   * con trỏ để chạy lại được. Tài liệu Meta không nói về phân trang và kích thước trang của endpoint
+   * này (dùng cursor kiểu Graph thông thường), cần kiểm chứng bằng Page thật.
+   */
+  async listConversations(
+    pageToken: string,
+    fbPageId: string,
+    opts: { after?: string; limit?: number } = {},
+  ): Promise<{ conversations: ConversationRef[]; after?: string }> {
+    const raw = await this.#request('GET', `${encodeURIComponent(fbPageId)}/conversations`, {
+      params: {
+        platform: 'messenger',
+        fields: 'id,updated_time',
+        limit: String(opts.limit ?? 25),
+        ...(opts.after ? { after: opts.after } : {}),
+      },
+      accessToken: pageToken,
+    });
+    const page = parseBody(conversationsResponse, raw, 'conversations');
+    const after = page.paging?.next ? page.paging.cursors?.after : undefined;
+    return {
+      conversations: page.data.map((c) => ({ id: c.id, updatedTime: c.updated_time ?? null })),
+      ...(after ? { after } : {}),
+    };
+  }
+
+  /**
+   * ID và thời điểm các tin trong một hội thoại (KHÔNG đảm bảo thứ tự: người gọi tự sắp theo
+   * `createdAt`). `hasMore`: Meta báo còn trang sau, tức danh sách này chưa phải toàn bộ. Tài liệu chỉ
+   * mô tả `?fields=messages`, không mô tả cách phân trang danh sách tin, nên ta không tự đi tiếp mà
+   * báo cho người gọi biết để ghi nhận.
+   */
+  async listConversationMessages(
+    pageToken: string,
+    conversationId: string,
+  ): Promise<{ messages: Array<{ id: string; createdAt: Date }>; hasMore: boolean }> {
+    const raw = await this.#request('GET', encodeURIComponent(conversationId), {
+      params: { fields: 'messages' },
+      accessToken: pageToken,
+    });
+    const body = parseBody(conversationMessagesResponse, raw, 'conversation.messages');
+    const out: Array<{ id: string; createdAt: Date }> = [];
+    for (const m of body.messages?.data ?? []) {
+      const createdAt = parseGraphTime(m.created_time);
+      if (createdAt) out.push({ id: m.id, createdAt });
+    }
+    return { messages: out, hasMore: Boolean(body.messages?.paging?.next) };
+  }
+
+  /**
+   * Chi tiết một tin. Theo tài liệu chỉ có với 20 tin gần nhất của hội thoại; tin cũ hơn trả lỗi
+   * "đã xóa" (người gọi coi là không còn lấy được). Không lấy attachment vì tài liệu không nêu field đó.
+   */
+  async getMessage(pageToken: string, messageId: string): Promise<GraphMessage> {
+    const raw = await this.#request('GET', encodeURIComponent(messageId), {
+      params: { fields: 'id,created_time,from,message' },
+      accessToken: pageToken,
+    });
+    const m = parseBody(messageResponse, raw, 'message');
+    const createdAt = parseGraphTime(m.created_time);
+    if (!createdAt) throw new GraphApiError('Phản hồi của Meta không đúng dạng (message.created_time).', 200, null, null, null);
+    return { id: m.id, createdAt, fromId: m.from?.id ?? null, text: m.message ?? null };
   }
 
   /** Đăng ký app nhận webhook của Page. Cần Page token và quyền `pages_manage_metadata`. */

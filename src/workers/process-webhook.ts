@@ -1,7 +1,8 @@
-import { inArray, sql } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { conversations, messages, pages } from '../db/schema.js';
-import { parseWebhookPayload, type InboundMessage, type ParseStats } from '../meta/parse-webhook.js';
+import { pages } from '../db/schema.js';
+import { parseWebhookPayload, type ParseStats } from '../meta/parse-webhook.js';
+import { storeInbound, type StoreItem } from './store-messages.js';
 
 /** Logger tối thiểu (FastifyBaseLogger thỏa). Không bao giờ truyền nội dung tin nhắn vào đây. */
 export interface Logger {
@@ -33,15 +34,6 @@ export class UnknownPageError extends Error {
   }
 }
 
-/** Số dòng mỗi câu INSERT: giữ số tham số dưới giới hạn 65535 của Postgres và transaction ngắn. */
-const CHUNK = 500;
-
-function* chunks<T>(items: T[], size: number): Generator<T[]> {
-  for (let i = 0; i < items.length; i += size) yield items.slice(i, i + size);
-}
-
-const convKey = (pageId: string, psid: string) => `${pageId}\u0001${psid}`;
-
 /**
  * Xử lý một payload webhook: lưu mọi tin đến vào DB, idempotent theo `mid`.
  *
@@ -67,66 +59,15 @@ export async function processWebhookPayload(
       const byFbId = new Map(known.map((p) => [p.fbPageId, p]));
 
       // `inbound` đã sắp theo timestamp: giữ nguyên thứ tự đó.
-      const toStore: Array<{ m: InboundMessage; pageId: string; tenantId: string }> = [];
+      const items: StoreItem[] = [];
       for (const m of inbound) {
         const page = byFbId.get(m.fbPageId);
-        if (page) toStore.push({ m, pageId: page.id, tenantId: page.tenantId });
+        if (page) items.push({ m, page: { id: page.id, tenantId: page.tenantId } });
         else stats.unknownPage += 1;
       }
-      if (toStore.length === 0) return;
-
-      // 1) Mỗi (page, khách) một conversation; last_message_at = tin mới nhất trong payload.
-      const agg = new Map<string, { tenantId: string; pageId: string; psid: string; lastMs: number }>();
-      for (const { m, pageId, tenantId } of toStore) {
-        const key = convKey(pageId, m.psid);
-        const cur = agg.get(key);
-        if (cur) cur.lastMs = Math.max(cur.lastMs, m.sentAtMs);
-        else agg.set(key, { tenantId, pageId, psid: m.psid, lastMs: m.sentAtMs });
-      }
-      // Sắp theo khóa để các job chạy song song khóa dòng theo cùng một thứ tự (tránh deadlock).
-      const convRows = [...agg.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-      const convIdByKey = new Map<string, string>();
-      for (const part of chunks(convRows, CHUNK)) {
-        const rows = await tx
-          .insert(conversations)
-          .values(
-            part.map(([, c]) => ({
-              tenantId: c.tenantId,
-              pageId: c.pageId,
-              psid: c.psid,
-              lastMessageAt: new Date(c.lastMs),
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [conversations.pageId, conversations.psid],
-            // GREATEST bỏ qua NULL; tin đến sai thứ tự không làm lùi last_message_at.
-            set: { lastMessageAt: sql`GREATEST(${conversations.lastMessageAt}, excluded.last_message_at)` },
-          })
-          .returning({ id: conversations.id, pageId: conversations.pageId, psid: conversations.psid });
-        for (const r of rows) convIdByKey.set(convKey(r.pageId, r.psid), r.id);
-      }
-
-      // 2) Tin nhắn: ON CONFLICT (mid) DO NOTHING, dòng trả về là những tin mới thật sự.
-      for (const part of chunks(toStore, CHUNK)) {
-        const inserted = await tx
-          .insert(messages)
-          .values(
-            part.map(({ m, pageId, tenantId }) => ({
-              tenantId,
-              pageId,
-              conversationId: convIdByKey.get(convKey(pageId, m.psid))!,
-              mid: m.mid,
-              text: m.text,
-              attachments: m.attachments,
-              sentAt: new Date(m.sentAtMs),
-              source: 'webhook' as const,
-            })),
-          )
-          .onConflictDoNothing({ target: messages.mid })
-          .returning({ id: messages.id });
-        stats.stored += inserted.length;
-        stats.duplicates += part.length - inserted.length;
-      }
+      const r = await storeInbound(tx, items, 'webhook');
+      stats.stored += r.stored;
+      stats.duplicates += r.duplicates;
     });
   }
 
