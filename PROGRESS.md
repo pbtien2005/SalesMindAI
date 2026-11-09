@@ -151,7 +151,7 @@ Kế hoạch chi tiết: [doc/PLAN-module2.md](doc/PLAN-module2.md). Cùng quy �
 
 | Mốc | Nội dung | Trạng thái | Ngày | Bằng chứng |
 |---|---|---|---|---|
-| 0 | Tiền đề: thay đổi echo của Module 1 (`direction`, `sender_kind`, migration 0002) đã commit và test đạt | bỏ qua theo yêu cầu | 2026-11-09 | Chưa có. Lúc kiểm tra, 19 file đã sửa và 6 file mới của phiên khác chưa commit; `npm run typecheck` sạch, **chưa chạy `npm test`** (tránh đạp lên DB test của phiên kia). **Mốc 2 không bắt đầu được cho tới khi phần này commit.** |
+| 0 | Tiền đề: thay đổi echo của Module 1 (`direction`, `sender_kind`, migration 0002) đã commit và test đạt | xong | 2026-11-10 | Thay đổi echo đã commit ở `25e21bb`. Trên `main`: `npm run typecheck` sạch; `npm test` **374/374 đạt** (19 file, 97,7 giây, một lần chạy) trên Postgres 18 của Docker. Trước đó (2026-11-09) mốc này ghi "bỏ qua" vì phần echo chưa commit. |
 | 1 | Kế hoạch: tài liệu, cập nhật CLAUDE.md, xác minh API Anthropic | xong | 2026-11-09 | [doc/PLAN-module2.md](doc/PLAN-module2.md); mục "Điểm API Anthropic đã xác minh" trong tài liệu đó đối chiếu bằng tài liệu skill `claude-api` và gói `@anthropic-ai/sdk@1.6.0` tải từ npm (đọc `.d.ts`, `.js`). Chưa chạy code nào, chưa gọi API thật. |
 | 2 | DB: tenants.ai_extraction_enabled, extraction_runs, proposals, profile_fields | chưa làm | | |
 | 3 | Công cụ tất định: kiểm chứng câu gốc, SĐT, biểu thức thời gian | chưa làm | | |
