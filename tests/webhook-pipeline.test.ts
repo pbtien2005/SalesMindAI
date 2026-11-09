@@ -13,6 +13,7 @@ import {
   WEBHOOK_QUEUE,
   type WebhookJobData,
 } from '../src/queue/boss.js';
+import { redriveDeadLetter } from '../src/queue/admin.js';
 import { processWebhookPayload, UnknownPageError } from '../src/workers/process-webhook.js';
 import { getTestDatabaseUrl, openTestDb, truncateAll } from './helpers/test-db.js';
 import { APP_SECRET, messageEvent, PAGE_ID, PSID, sign, VERIFY_TOKEN, webhookPayload } from './helpers/webhook.js';
@@ -289,6 +290,40 @@ describe('độ trễ và độ bền', () => {
     expect(calls).toBe(3); // 1 lần đầu + 2 lần retry
     expect(dead[0]!.data.payload).toEqual(payload);
     expect(await count()).toBe(0);
+  });
+
+  it('dead-letter chạy lại được: sau khi sửa nguyên nhân, redrive đưa payload về hàng đợi và tin được lưu đủ, đúng một lần', async () => {
+    const deadCount = async () =>
+      Number((await handle.pool.query("select count(*) from pgboss.job where name = $1 and state = 'created'", [WEBHOOK_DEAD_QUEUE])).rows[0].count);
+
+    // 1) Lỗi vĩnh viễn: hết retry thì vào dead-letter
+    let broken = true;
+    work = async (d) => {
+      if (broken) throw new Error('nguyên nhân chưa sửa');
+      await realWork(d);
+    };
+    const payload = webhookPayload([messageEvent({ mid: 'redrive-1', text: 'tin cần được giữ lại' })]);
+    await send(payload);
+    await waitFor(async () => (await deadCount()) === 1, 40_000);
+    expect(await count()).toBe(0);
+
+    // 2) --dry-run chỉ xem, không chuyển
+    const preview = await redriveDeadLetter(boss, 'webhook', { dryRun: true });
+    expect(preview).toMatchObject({ dryRun: true, jobs: 1, unroutable: 0 });
+    expect(await deadCount()).toBe(1);
+
+    // 3) Sửa nguyên nhân rồi chạy lại thật
+    broken = false;
+    const r = await redriveDeadLetter(boss, 'webhook');
+    expect(r).toMatchObject({ dryRun: false, jobs: 1 });
+    await waitFor(async () => (await count()) === 1, 30_000);
+    const [row] = await db.select().from(messages);
+    expect(row).toMatchObject({ mid: 'redrive-1', text: 'tin cần được giữ lại' });
+    expect(await deadCount()).toBe(0);
+
+    // 4) Chạy lại lần nữa không làm gì và không tạo trùng
+    expect(await redriveDeadLetter(boss, 'webhook')).toMatchObject({ jobs: 0 });
+    expect(await count()).toBe(1);
   });
 
   it('xử lý theo kiểu tất cả hoặc không gì: lỗi giữa chừng thì rollback, chạy lại lưu đủ', async () => {

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import Fastify, {
   type FastifyBaseLogger,
   type FastifyInstance,
@@ -5,6 +6,7 @@ import Fastify, {
   type FastifyServerOptions,
 } from 'fastify';
 import { oauthRoutes, type OAuthRouteOptions } from './auth/oauth-routes.js';
+import { healthRoutes, type ReadinessCheck } from './health.js';
 import type { WebhookQueue } from './queue/boss.js';
 import { webhookRoutes } from './webhook/routes.js';
 
@@ -15,6 +17,9 @@ export interface AppDeps {
   enqueueTimeoutMs?: number;
   /** Có thì bật luồng kết nối Page qua Facebook Login (`/auth/facebook/*`). */
   oauth?: OAuthRouteOptions;
+  /** Các kiểm tra cho `/readyz` (ví dụ DB, hàng đợi). Không có thì `/readyz` luôn trả sẵn sàng. */
+  readiness?: ReadinessCheck[];
+  readinessTimeoutMs?: number;
 }
 
 /**
@@ -32,9 +37,34 @@ export function safeRequestSerializer(req: FastifyRequest) {
 }
 
 /**
- * Gắn serializer an toàn vào cấu hình logger (`true` hoặc object cấu hình pino).
- * Fastify 5 nhận logger dựng sẵn qua `loggerInstance`, trường hợp đó ta không sửa được serializer:
- * người gọi phải tự dùng `safeRequestSerializer` khi tạo pino, nếu không URL (gồm query) sẽ bị ghi.
+ * Đường dẫn pino sẽ bị che trong log, phòng thủ thêm: code hiện không ghi các trường này, nhưng một
+ * dòng log `{ err }` hay `{ payload }` sau này cũng không được làm lộ token, secret hay nội dung tin.
+ * (`*.x` chỉ khớp một cấp lồng; `x` ở đầu khớp cấp trên cùng.)
+ *
+ * Đây là lưới an toàn, KHÔNG thay thế quy tắc "không đưa nội dung tin, token vào log": nó che theo TÊN
+ * trường nên không bắt được nội dung lồng sâu hơn một cấp (ví dụ `{ payload: { entry: [...] } }`), và
+ * ngược lại sẽ che cả log vô hại có trường tên `text` hoặc `token`. Đánh đổi có chủ ý để an toàn mặc định.
+ */
+export const LOG_REDACT_PATHS = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'req.headers["x-hub-signature-256"]',
+  'res.headers["set-cookie"]',
+  ...['token', 'accessToken', 'access_token', 'tokenEnc', 'client_secret', 'appSecret', 'password', 'text'].flatMap((k) => [k, `*.${k}`]),
+];
+
+/** `x-request-id` do client gửi chỉ được tin khi đúng dạng an toàn (không có xuống dòng, độ dài hợp lý). */
+const REQUEST_ID_FORMAT = /^[A-Za-z0-9._-]{1,64}$/;
+
+function genReqId(req: { headers: Record<string, unknown> }): string {
+  const incoming = req.headers['x-request-id'];
+  return typeof incoming === 'string' && REQUEST_ID_FORMAT.test(incoming) ? incoming : randomUUID();
+}
+
+/**
+ * Gắn serializer an toàn và redact vào cấu hình logger (`true` hoặc object cấu hình pino).
+ * Fastify 5 nhận logger dựng sẵn qua `loggerInstance`, trường hợp đó ta không sửa được:
+ * người gọi phải tự dùng `safeRequestSerializer` và `LOG_REDACT_PATHS` khi tạo pino.
  */
 function withSafeLogging(opts: FastifyServerOptions): FastifyServerOptions {
   const logger = opts.logger;
@@ -43,25 +73,46 @@ function withSafeLogging(opts: FastifyServerOptions): FastifyServerOptions {
   const isConfig = logger === true || (typeof logger === 'object' && !('info' in logger));
   if (!isConfig) return opts;
   const base = logger === true ? {} : (logger as Exclude<typeof logger, boolean | FastifyBaseLogger>);
+  const existing = base.redact;
+  const existingPaths = Array.isArray(existing) ? existing : (existing?.paths ?? []);
   return {
     ...opts,
-    logger: { ...base, serializers: { ...base.serializers, req: safeRequestSerializer } },
+    logger: {
+      ...base,
+      serializers: { ...base.serializers, req: safeRequestSerializer },
+      redact: { paths: [...LOG_REDACT_PATHS, ...existingPaths], censor: '[đã ẩn]' },
+    },
   };
 }
 
 /**
  * Tạo app Fastify. Tách khỏi server.ts để test bằng app.inject().
- * Không truyền `deps` thì chỉ có /healthz (đủ cho test nhẹ).
+ * Không truyền `deps` thì chỉ có /healthz và /readyz (đủ cho test nhẹ).
+ *
+ * Mọi request có `x-request-id` (lấy từ client nếu hợp lệ, nếu không thì sinh mới); id này có trong log
+ * (`reqId`) và trong header phản hồi để đối chiếu log với một request cụ thể.
  */
 export function buildApp(opts: FastifyServerOptions = {}, deps?: AppDeps): FastifyInstance {
-  const app = Fastify(withSafeLogging(opts));
+  const app = Fastify({ genReqId, ...withSafeLogging(opts) });
 
-  app.get('/healthz', async () => ({ status: 'ok' }));
+  app.addHook('onSend', async (req, reply) => {
+    reply.header('x-request-id', req.id);
+  });
+
+  void app.register(healthRoutes, {
+    ...(deps?.readiness ? { readiness: deps.readiness } : {}),
+    ...(deps?.readinessTimeoutMs ? { checkTimeoutMs: deps.readinessTimeoutMs } : {}),
+  });
 
   if (deps) {
-    const { oauth, ...webhook } = deps;
-    void app.register(webhookRoutes, webhook);
-    if (oauth) void app.register(oauthRoutes, oauth);
+    // Chọn rõ từng trường: thêm cấu hình mới vào AppDeps sẽ không vô tình lọt vào webhook.
+    void app.register(webhookRoutes, {
+      appSecret: deps.appSecret,
+      verifyToken: deps.verifyToken,
+      queue: deps.queue,
+      ...(deps.enqueueTimeoutMs ? { enqueueTimeoutMs: deps.enqueueTimeoutMs } : {}),
+    });
+    if (deps.oauth) void app.register(oauthRoutes, deps.oauth);
   }
 
   return app;

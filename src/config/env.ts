@@ -45,6 +45,14 @@ const envSchema = z.object({
   GRAPH_API_VERSION: z.string().regex(/^v\d+\.\d+$/, 'Dạng đúng: v23.0'),
   DATABASE_URL: z.string().url(),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  /**
+   * Tin các header X-Forwarded-* (cần khi chạy sau proxy, tunnel hoặc load balancer để biết IP thật của
+   * client). Chỉ bật khi thật sự có proxy phía trước: nếu không, client có thể giả IP để né giới hạn tốc độ.
+   */
+  TRUST_PROXY: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 

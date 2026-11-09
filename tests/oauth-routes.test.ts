@@ -61,6 +61,8 @@ interface SetupOpts {
   crypto?: TokenCrypto;
   graph?: OAuthRouteOptions['graph'];
   publicBaseUrl?: string;
+  rateLimit?: { max: number; timeWindowMs: number };
+  trustProxy?: boolean;
 }
 
 async function setup(o: SetupOpts = {}) {
@@ -68,12 +70,12 @@ async function setup(o: SetupOpts = {}) {
   logLines = [];
   const realGraph = new GraphClient({ apiVersion: API_VERSION, appId: FB_APP_ID, appSecret: FB_APP_SECRET, fetch: meta.fetch });
   app = buildApp(
-    { logger: { level: 'debug', stream: { write: (s: string) => void logLines.push(s) } } },
+    { logger: { level: 'debug', stream: { write: (s: string) => void logLines.push(s) } }, ...(o.trustProxy ? { trustProxy: true } : {}) },
     {
       appSecret: APP_SECRET,
       verifyToken: VERIFY_TOKEN,
       queue: nullQueue,
-      oauth: { db, graph: o.graph ?? realGraph, crypto: o.crypto ?? realCrypto, publicBaseUrl: o.publicBaseUrl ?? BASE },
+      oauth: { db, graph: o.graph ?? realGraph, crypto: o.crypto ?? realCrypto, publicBaseUrl: o.publicBaseUrl ?? BASE, ...(o.rateLimit ? { rateLimit: o.rateLimit } : {}) },
     },
   );
   await app.ready();
@@ -551,6 +553,65 @@ describe('connectPages: lỗi của một Page không làm mất các Page còn 
   it('lỗi Meta 190 được nhận diện qua GraphApiError.isTokenInvalid', () => {
     expect(new GraphApiError('x', 400, 190, null, 'OAuthException').isTokenInvalid).toBe(true);
     expect(new GraphApiError('x', 400, 200, null, null).isTokenInvalid).toBe(false);
+  });
+});
+
+describe('giới hạn tốc độ cho /auth/facebook/*', () => {
+  const hit = (ip: string, headers: Record<string, string> = {}) =>
+    app.inject({ method: 'GET', url: '/auth/facebook/start', query: { state: 'x'.repeat(43) }, remoteAddress: ip, headers });
+
+  it('vượt giới hạn: 429 kèm Retry-After, không còn chạm DB hay Meta', async () => {
+    await setup({ rateLimit: { max: 3, timeWindowMs: 60_000 } });
+    for (let i = 0; i < 3; i++) expect((await hit('10.0.0.1')).statusCode).toBe(400); // state sai nhưng chưa bị chặn
+    const blocked = await hit('10.0.0.1');
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers['retry-after']).toBeTruthy();
+    expect(blocked.json().message).toMatch(/Quá nhiều yêu cầu/);
+    expect(meta.calls).toHaveLength(0);
+  });
+
+  it('mỗi IP một giới hạn riêng: IP khác không bị ảnh hưởng', async () => {
+    await setup({ rateLimit: { max: 2, timeWindowMs: 60_000 } });
+    await hit('10.0.0.1'); await hit('10.0.0.1');
+    expect((await hit('10.0.0.1')).statusCode).toBe(429);
+    expect((await hit('10.0.0.2')).statusCode).toBe(400);
+  });
+
+  it('áp dụng cho cả /callback; request hợp lệ cũng bị tính', async () => {
+    await setup({ rateLimit: { max: 2, timeWindowMs: 60_000 } });
+    const cb = () => app.inject({ method: 'GET', url: '/auth/facebook/callback', query: {}, remoteAddress: '10.0.0.9' });
+    await cb(); await cb();
+    expect((await cb()).statusCode).toBe(429);
+  });
+
+  it('mặc định 30 yêu cầu mỗi phút', async () => {
+    await setup();
+    for (let i = 0; i < 30; i++) expect((await hit('10.0.0.3')).statusCode).toBe(400);
+    expect((await hit('10.0.0.3')).statusCode).toBe(429);
+  });
+
+  it('KHÔNG áp dụng cho /webhook và /healthz (Meta gửi dồn dập; webhook đã có kiểm tra chữ ký)', async () => {
+    await setup({ rateLimit: { max: 2, timeWindowMs: 60_000 } });
+    for (let i = 0; i < 10; i++) {
+      expect((await app.inject({ method: 'GET', url: '/healthz', remoteAddress: '10.0.0.4' })).statusCode).toBe(200);
+      expect((await app.inject({ method: 'POST', url: '/webhook', payload: '{}', remoteAddress: '10.0.0.4' })).statusCode).toBe(403); // sai chữ ký, không phải 429
+    }
+  });
+
+  it('không tin X-Forwarded-For khi không bật trustProxy: không thể né giới hạn bằng cách giả IP', async () => {
+    await setup({ rateLimit: { max: 2, timeWindowMs: 60_000 } });
+    await hit('10.0.0.5', { 'x-forwarded-for': '1.1.1.1' });
+    await hit('10.0.0.5', { 'x-forwarded-for': '2.2.2.2' });
+    expect((await hit('10.0.0.5', { 'x-forwarded-for': '3.3.3.3' })).statusCode).toBe(429);
+  });
+
+  it('bật trustProxy (đứng sau tunnel): mỗi IP thật trong X-Forwarded-For có giới hạn riêng', async () => {
+    await setup({ rateLimit: { max: 2, timeWindowMs: 60_000 }, trustProxy: true });
+    const proxy = '10.0.0.6';
+    await hit(proxy, { 'x-forwarded-for': '1.1.1.1' });
+    await hit(proxy, { 'x-forwarded-for': '1.1.1.1' });
+    expect((await hit(proxy, { 'x-forwarded-for': '1.1.1.1' })).statusCode).toBe(429);
+    expect((await hit(proxy, { 'x-forwarded-for': '2.2.2.2' })).statusCode).toBe(400); // người dùng khác sau cùng proxy
   });
 });
 

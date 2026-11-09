@@ -1,3 +1,4 @@
+import rateLimit from '@fastify/rate-limit';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { TokenCrypto } from '../crypto/token-crypto.js';
@@ -15,6 +16,11 @@ export interface OAuthRouteOptions {
   crypto: TokenCrypto;
   /** URL gốc công khai, không có dấu / cuối. */
   publicBaseUrl: string;
+  /**
+   * Giới hạn số request mỗi IP cho `/auth/facebook/*`. Mặc định 30 mỗi phút. Hai route này công khai và
+   * mỗi request chạm DB (kiểm tra state), nên cần chặn việc gọi dồn dập.
+   */
+  rateLimit?: { max: number; timeWindowMs: number };
 }
 
 /** Cookie gắn luồng kết nối với đúng trình duyệt đã mở liên kết. */
@@ -102,6 +108,18 @@ function summarize(outcomes: PageOutcome[]): { title: string; body: string } {
  */
 export const oauthRoutes: FastifyPluginAsync<OAuthRouteOptions> = async (app, opts) => {
   const redirectUri = `${opts.publicBaseUrl}${OAUTH_CALLBACK_PATH}`;
+
+  // Plugin này không bọc bằng fastify-plugin nên giới hạn chỉ áp dụng cho các route /auth/facebook/*.
+  // Khóa theo IP: sau proxy hoặc tunnel phải bật trustProxy của Fastify, nếu không mọi request có cùng IP của proxy.
+  await app.register(rateLimit, {
+    max: opts.rateLimit?.max ?? 30,
+    timeWindow: opts.rateLimit?.timeWindowMs ?? 60_000,
+    errorResponseBuilder: (_req, ctx) => ({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: `Quá nhiều yêu cầu, thử lại sau ${Math.ceil(ctx.ttl / 1000)} giây.`,
+    }),
+  });
   const secure = opts.publicBaseUrl.startsWith('https://');
   const cookie = (value: string, maxAge: number) =>
     `${OAUTH_COOKIE}=${value}; Path=/auth/facebook; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;

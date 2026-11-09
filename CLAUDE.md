@@ -36,11 +36,13 @@ Nguyên tắc sản phẩm:
 - `npm run dev`: chạy server, đọc `.env` (sao chép từ `.env.example`)
 - `npm test`: chạy Vitest
 - `npm run typecheck`: kiểm tra kiểu TypeScript
-- `npm run build` / `npm start`: build và chạy bản production
+- `npm run build` / `npm start`: build và chạy bản production; `npm run db:migrate:prod`: migrate bằng bản build
 - `npm run db:generate`: sinh migration từ `src/db/schema.ts` (không cần kết nối DB)
 - `npm run db:migrate`: áp migration lên `DATABASE_URL` (đọc `.env`)
 - `npm run cli -- tenant:create "<tên>"`: tạo tenant và in liên kết kết nối Page (một lần, 10 phút); xem `tenant:connect-url`, `tenant:list`
 - `npm run cli -- backfill [<fbPageId>]` xếp việc lấy lại tin cũ (server xử lý); `backfill:status` xem tiến độ
+- `npm run cli -- queue:status` xem hàng đợi; `queue:redrive <webhook|backfill> [--dry-run]` chạy lại job trong dead-letter
+- `README.md`: cài đặt, cấu hình, vận hành
 - Kiểm tra với Page thật: `doc/KET-NOI-PAGE.md`
 
 Test DB chạy trên `salesmind_test` (tên phải kết thúc bằng `_test`, test xóa sạch schema đó mỗi lần chạy) nên cần Postgres đang chạy.

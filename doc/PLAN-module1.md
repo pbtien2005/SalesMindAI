@@ -76,6 +76,7 @@ Giới hạn thực tế theo tài liệu: chi tiết tin nhắn chỉ lấy đ�
 Test: phân trang nhiều trang, chạy lại không tạo bản trùng, lỗi giữa chừng thì tiếp tục từ con trỏ, tin backfill và tin webhook trùng nhau không thành hai dòng.
 
 ### Mốc 6: Quan sát, README, review
+(Đã làm xong. Thực tế có thêm: giới hạn tốc độ cho `/auth/facebook/*`, CLI `queue:status` và `queue:redrive`, monitor độ sâu hàng đợi, `db:migrate:prod`. Xem PROGRESS.md.)
 pino `redact` (token, header chữ ký, nội dung tin), request id, `GET /readyz` (kiểm tra DB), log độ sâu hàng đợi và số job lỗi, README (cài đặt, `.env`, tunnel, đăng ký webhook, chạy test), chạy `code-review` cho toàn module và sửa lỗi thật.
 
 ## Rủi ro và lưu ý

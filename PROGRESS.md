@@ -4,6 +4,13 @@ Cập nhật file này sau mỗi mốc, trước khi commit. Trạng thái: `ch�
 Cột "Bằng chứng" ghi kết quả test, mã commit hoặc liên kết cụ thể; chưa có thì không ghi "xong".
 Kế hoạch chi tiết: [doc/PLAN-module1.md](doc/PLAN-module1.md).
 
+## Tình trạng Module 1 (cập nhật 2026-11-09)
+
+**Mã nguồn và test tự động đã hoàn tất cho cả 7 mốc.** Chưa có bằng chứng với Meta thật cho hai mốc:
+- **Mốc 4** (kết nối Page qua OAuth, nhận webhook thật) và **mốc 5** (backfill) ở trạng thái "đang làm" cho tới khi bạn kiểm tra bằng Meta App và Page thật theo [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md).
+- Mọi bằng chứng hiện có dựa trên payload giả lập theo tài liệu Meta, test với Postgres và pg-boss thật, và một số lời gọi tới Graph API thật bằng thông tin giả (để xem định dạng lỗi thật).
+- Các điểm chưa xác minh quan trọng nhất: đơn vị `timestamp` của webhook, `id` tin của Conversations API có trùng `mid` webhook không, và app của bạn cần `scope` hay `config_id` khi đăng nhập.
+
 | Mốc | Nội dung | Trạng thái | Ngày | Bằng chứng |
 |---|---|---|---|---|
 | 0 | Môi trường: Node 26, TypeScript, docker-compose Postgres 18, Vitest, khung Fastify | xong | 2026-11-09 | Node v26.13.0 LTS (MSI đã đối chiếu SHA256; commit mốc 0 làm trên v24.22.2, sau đó chuyển lên 26 theo yêu cầu, typecheck, test, healthz đạt lại). `docker compose up -d`: container healthy, PostgreSQL 18.6, có DB `salesmind` và `salesmind_test`. `npm run typecheck` đạt. `npm test` 5/5 đạt. Chạy thật server, `GET /healthz` trả 200 `{"status":"ok"}`. |
@@ -12,7 +19,7 @@ Kế hoạch chi tiết: [doc/PLAN-module1.md](doc/PLAN-module1.md).
 | 3 | Webhook, kiểm tra chữ ký, khử trùng theo message.mid | xong | 2026-11-09 | `npm run typecheck` sạch; `npm test` 105/105 đạt (chạy 3 lần liên tiếp, không flaky), gồm signature 15, parse 18, route 19, toàn tuyến Postgres + pg-boss thật 17. Smoke test với server thật (tiến trình riêng, DB dev): GET xác minh 200/403; POST chữ ký đúng 200 trong 17–54 ms; gửi lại cùng payload vẫn 1 dòng; chữ ký sai, toàn số 0, thiếu đều 403; echo bị bỏ; tiếng Việt qua body `\u`-escape đúng; log không chứa nội dung tin, PSID, secret, chữ ký. Cổng bị chiếm thì thoát sạch với mã 1. Mutation: phá `ON CONFLICT` thì test khử trùng đỏ. `code-review` (medium) 7 phát hiện: sửa 6, giữ 1 (xem dưới). |
 | 4 | Kết nối Page thật | đang làm (code xong, chờ bạn kiểm tra với Page thật) | 2026-11-09 | **Đã có bằng chứng:** `npm run typecheck` sạch; `npm test` 187/187 đạt, chạy 2 lần liên tiếp (graph-client 22, oauth-routes 36, oauth-state 16, env 12 và các file cũ). Mutation: bỏ ràng buộc nonce của cookie thì 4 test đỏ; bỏ `setWhere` (ghi đè Page tenant khác) thì 1 test đỏ; bỏ `subscribedAt: null` khi kết nối lại thì 1 test đỏ. Server thật + CLI: `tenant:create` in liên kết; `/auth/facebook/start` 302 sang Facebook đúng `client_id`, `redirect_uri`, `state`, `scope`; callback không cookie 400; trình duyệt khác mở cùng state 400; phát lại 400; **gọi Meta thật với code và App ID giả: Meta trả HTTP 400, mã 101, `OAuthException`, client parse đúng và trả trang 502**; log không chứa state, code, secret. `code-review` 2 lượt: 18 phát hiện, sửa 14, giữ 4 có chủ ý. **Chưa có bằng chứng:** đăng nhập Facebook, lưu Page, đăng ký webhook, nhận tin bằng Page thật. Làm theo [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md) rồi báo kết quả. |
 | 5 | Backfill tin cũ | đang làm (code xong, chờ thử với Page thật) | 2026-11-09 | **Đã có bằng chứng:** `npm run typecheck` sạch; `npm test` 236/236 đạt, chạy 2 lần liên tiếp (backfill 32, backfill chạy thật với pg-boss 7, graph-client 32). 8 mutation đều làm test đỏ (mất phần đã lấy khi bị giới hạn tốc độ, lưu cả tin của Page, bỏ giới hạn 20 tin, tắt khử trùng dự phòng, bỏ tự sắp xếp, nuốt lỗi 5xx, khử trùng tin không có text, lưu tin không có text). CLI thật: `backfill` xếp việc, lần hai báo "đã có việc chờ"; `backfill:status` đúng. **Server thật + Meta thật với token giả:** Graph API trả mã 190, Page bị đánh dấu `token_invalid`, trạng thái `failed`, không retry. `code-review`: 10 phát hiện, sửa 9, giữ 1. **Chưa có bằng chứng:** lấy tin thật từ một Page thật (cần bạn). |
-| 6 | Quan sát (log, metric), README, review | chưa làm | | |
+| 6 | Quan sát (log, metric), README, review | xong | 2026-11-09 | `npm run typecheck` sạch; `npm test` **302/302 đạt, chạy 3 lần liên tiếp** (16 file). Đã làm: redact log, `x-request-id`, `/readyz` (DB và hàng đợi, 503 không lộ chi tiết), monitor độ sâu hàng đợi mỗi phút, giới hạn tốc độ `/auth/facebook/*` (30 yêu cầu mỗi phút mỗi IP, cấu hình `TRUST_PROXY`), CLI `queue:status` và `queue:redrive`, [README.md](README.md). 6 mutation cho các kiểm soát mới đều làm test đỏ. **Tắt nhẹ nhàng đã kiểm tra thật trên Linux** (container `node:26-slim`): `SIGTERM` thoát mã 0 sau 474 ms, không có log lỗi; thêm test job đang chạy dở hoàn tất trước khi dừng (mutation `graceful: false` làm test đỏ). Bản production: `npm run build` rồi `node dist/server.js` khởi động, `/readyz` ready, `db:migrate:prod` chạy được. Chạy lại dead-letter bằng pg-boss thật: payload còn nguyên, tin được lưu đúng một lần. `code-review` toàn module (`src`): 9 phát hiện, sửa 8, giữ 1 có chủ ý. |
 
 ## Điểm Meta API (đối chiếu tài liệu chính thức ngày 2026-11-09)
 
@@ -38,6 +45,19 @@ Trạng thái: **đã xác minh** = có trong tài liệu; **chưa xác minh** =
 - **Cấu hình queue không cập nhật khi đã tồn tại:** `createBoss` giờ gọi `updateQueue` cho queue có sẵn. `retryDelayMax` không sửa được qua `updateQueue` (giới hạn của pg-boss).
 
 Giữ nguyên có chủ ý: `stripNul` chạy ở cả route và worker. Lần ở route bắt buộc (pg-boss lưu jsonb); lần ở worker là phòng thủ, chỉ chạy trên trường đã rút ra nên rẻ.
+
+## Quyết định và lỗi phát hiện khi làm mốc 6
+
+- **Lỗi thật mà `code-review` toàn module tìm ra:**
+  - `queue:redrive --limit 50 webhook` đọc nhầm "50" thành đích (phụ thuộc thứ tự tham số). Đã chuyển sang `parseArgs` của Node: thứ tự không quan trọng, cờ lạ bị từ chối.
+  - Kiểm tra readiness của hàng đợi luôn báo OK vì `getQueue` trả null (không ném lỗi) khi queue thiếu. Đã sửa bằng `assertQueueExists`.
+  - Cảnh báo "job lỗi" ở queue nguồn không bao giờ tự hết (pg-boss giữ job hết retry ở trạng thái failed dù đã vào dead-letter) và trùng với cảnh báo dead-letter. Đã bỏ; số `failed` vẫn có trong log.
+  - `queue:redrive` thật không báo số job không có queue nguồn, nên cảnh báo dead-letter còn mãi mà không rõ lý do. Giờ có báo.
+  - Monitor không chờ lượt đọc đang chạy khi tắt; giờ `stop()` trả Promise và server `await` nó trước khi đóng pg-boss.
+- **Test chập chờn, nguyên nhân nằm ở test:** test tắt nhẹ nhàng đếm job `completed` của cả hàng đợi dùng chung, nên cộng cả job còn sót từ file test khác (thứ tự file đổi giữa các lần chạy). Đã dọn hàng đợi ở đầu test; các lần chạy liên tiếp sau đó đều đạt.
+- **Khi thử tắt nhẹ nhàng trong container, lần đầu không thoát được:** do cách tôi dựng thử nghiệm (`sh -c "... && node ..."` làm `sh` thành PID 1 và không chuyển `SIGTERM`), không phải lỗi ứng dụng. Đã ghi vào README: trong container phải để `node` là PID 1.
+- **Giữ nguyên có chủ ý:** redact theo tên trường (`text`, `token`...) có thể che nhầm log vô hại và không bắt được nội dung lồng sâu hơn một cấp. Đây là lưới an toàn bổ sung cho quy tắc "không đưa nội dung vào log", không thay thế nó (đã ghi rõ trong mã).
+- **`TRUST_PROXY` mặc định `false`** (an toàn: không tin header do client gửi). Sau tunnel hoặc proxy mà quên bật thì mọi client chung một giới hạn tốc độ; server ghi một dòng gợi ý lúc khởi động khi `PUBLIC_BASE_URL` không phải localhost.
 
 ## Quyết định và lỗi phát hiện khi làm mốc 5
 

@@ -1,6 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 import type { BackfillState } from '../backfill/backfill.js';
 import { backfillOverview, isBackfillRunning } from '../backfill/status.js';
+import { assessQueueHealth } from '../queue/monitor.js';
+import { parseBackfillArgs, parseRedriveArgs } from './args.js';
+import { queueOverview, redriveDeadLetter } from '../queue/admin.js';
 import { newConnectUrl, createTenant, listTenants, tenantExists } from '../auth/tenants.js';
 import { loadEnv } from '../config/env.js';
 import { createDb } from '../db/client.js';
@@ -21,6 +24,9 @@ const USAGE = `Dùng: npm run cli -- <lệnh>
   backfill [<fbPageId>] [--force]  Đưa việc lấy lại tin cũ vào hàng đợi (mọi Page đang dùng được, hoặc một Page).
                               Bỏ qua Page đang có backfill chạy dở, trừ khi dùng --force
   backfill:status             Xem tiến độ backfill và độ sâu hàng đợi
+  queue:status                Xem độ sâu mọi hàng đợi (webhook, backfill, dead-letter) và cảnh báo
+  queue:redrive <webhook|backfill> [--limit N] [--dry-run]
+                              Đưa job trong dead-letter về hàng đợi gốc để xử lý lại (sau khi đã sửa nguyên nhân)
 
 Lệnh backfill chỉ xếp việc vào hàng đợi; server (npm run dev) mới là nơi xử lý. Meta chỉ cho lấy chi
 tiết 20 tin gần nhất của mỗi hội thoại nên đây không phải là khôi phục toàn bộ lịch sử.
@@ -61,8 +67,7 @@ async function main(): Promise<number> {
         return 0;
       }
       case 'backfill': {
-        const force = args.includes('--force');
-        const target = args.find((a) => !a.startsWith('--'));
+        const { force, fbPageId: target } = parseBackfillArgs(args);
         const rows = await db
           .select({ id: pages.id, fbPageId: pages.fbPageId, name: pages.name, state: pages.backfillState })
           .from(pages)
@@ -109,6 +114,39 @@ async function main(): Promise<number> {
           await boss.stop({ graceful: true, timeout: 5000 });
         }
         return 0;
+      }
+      case 'queue:status': {
+        const boss = await createBoss(env.DATABASE_URL);
+        try {
+          const health = assessQueueHealth(await queueOverview(boss));
+          for (const q of health.queues) {
+            console.log(`${q.name.padEnd(28)} chờ ${q.queued}, đang chạy ${q.active}, lỗi ${q.failed}`);
+          }
+          console.log('(số liệu có thể trễ tới ~1 phút)');
+          if (health.problems.length === 0) console.log('Không có vấn đề.');
+          for (const p of health.problems) console.log(`CHÚ Ý: ${p}`);
+          return health.problems.length === 0 ? 0 : 2;
+        } finally {
+          await boss.stop({ graceful: true, timeout: 5000 });
+        }
+      }
+      case 'queue:redrive': {
+        const { target, limit, dryRun } = parseRedriveArgs(args);
+        const boss = await createBoss(env.DATABASE_URL);
+        try {
+          const r = await redriveDeadLetter(boss, target, { ...(limit ? { limit } : {}), dryRun });
+          console.log(
+            r.dryRun
+              ? `[thử] Sẽ chuyển ${r.jobs} job của ${r.target} về hàng đợi gốc (${r.unroutable} job không có queue nguồn).`
+              : `Đã chuyển ${r.jobs} job của ${r.target} về hàng đợi gốc. Server sẽ xử lý lại.`,
+          );
+          if (r.unroutable > 0) {
+            console.log(`CHÚ Ý: ${r.unroutable} job không có queue nguồn nên không chuyển được, vẫn nằm trong dead-letter.`);
+          }
+          return 0;
+        } finally {
+          await boss.stop({ graceful: true, timeout: 5000 });
+        }
       }
       default:
         console.error(`Lệnh không hợp lệ: ${command}\n\n${USAGE}`);
