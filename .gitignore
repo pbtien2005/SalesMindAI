@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+coverage/
+
+# Docker dev data
+.docker-data/
+pgdata/
+
+# Agent tooling (do skills CLI tao ra)
+.agents/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
