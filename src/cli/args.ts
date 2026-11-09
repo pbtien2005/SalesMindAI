@@ -42,6 +42,23 @@ export function parseRedriveArgs(args: string[]): { target: DeadLetterTarget; li
   return { target, ...(limit !== undefined ? { limit } : {}), dryRun: values['dry-run'] === true };
 }
 
+/** `proposals:decide <proposalId> <accept|edit|dismiss> --by <tên> [--text <giá trị sửa>] [--at <ISO 8601 có múi giờ>]`. */
+export function parseDecideArgs(args: string[]): {
+  proposalId: string;
+  action: 'accept' | 'edit' | 'dismiss';
+  by: string;
+  text?: string;
+  at?: string;
+} {
+  const { values, positionals } = parse(args, { by: { type: 'string' }, text: { type: 'string' }, at: { type: 'string' } });
+  if (positionals.length !== 2) throw new UsageError('Cần đúng hai tham số: <proposalId> <accept|edit|dismiss>.');
+  const [proposalId, action] = positionals as [string, string];
+  if (action !== 'accept' && action !== 'edit' && action !== 'dismiss') throw new UsageError(`Hành động không hợp lệ "${action}": chỉ nhận accept, edit hoặc dismiss.`);
+  if (!values.by?.trim()) throw new UsageError('Thiếu --by <tên người quyết định>.');
+  if (action === 'edit' && !values.text?.trim()) throw new UsageError('edit cần --text <giá trị mới>.');
+  return { proposalId, action, by: values.by, ...(values.text !== undefined ? { text: values.text } : {}), ...(values.at !== undefined ? { at: values.at } : {}) };
+}
+
 /** `backfill [<fbPageId>] [--force]`. */
 export function parseBackfillArgs(args: string[]): { fbPageId?: string; force: boolean } {
   const { values, positionals } = parse(args, { force: { type: 'boolean' } });

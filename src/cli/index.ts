@@ -5,7 +5,8 @@ import { assessQueueHealth } from '../queue/monitor.js';
 import { resubscribePages } from '../auth/resubscribe.js';
 import { createTokenCrypto } from '../crypto/token-crypto.js';
 import { GraphClient } from '../meta/graph-client.js';
-import { parseBackfillArgs, parseRedriveArgs } from './args.js';
+import { parseBackfillArgs, parseDecideArgs, parseRedriveArgs } from './args.js';
+import { decideProposal, listPending, ProposalError } from '../extraction/proposals.js';
 import { queueOverview, redriveDeadLetter } from '../queue/admin.js';
 import { newConnectUrl, createTenant, listTenants, tenantExists } from '../auth/tenants.js';
 import { extractionStatus, setAiEnabled } from '../extraction/admin.js';
@@ -13,7 +14,7 @@ import { createExtractor } from '../extraction/factory.js';
 import { runExtraction } from '../extraction/run.js';
 import { loadEnv } from '../config/env.js';
 import { createDb } from '../db/client.js';
-import { pages } from '../db/schema.js';
+import { conversations, pages, proposals } from '../db/schema.js';
 import {
   BACKFILL_CONVERSATION_QUEUE,
   BACKFILL_DEAD_QUEUE,
@@ -39,6 +40,9 @@ const USAGE = `Dùng: npm run cli -- <lệnh>
   ai:disable <tenantId>       Tắt AI trích xuất cho tenant
   extract:run <conversationId>  Chạy trích xuất cho một hội thoại ngay (đồng bộ, theo AI_MODE hiện hành)
   extract:status              Số lần trích xuất theo trạng thái và lý do lỗi
+  proposals:list <conversationId>   Đề xuất đang chờ của một hội thoại
+  proposals:decide <proposalId> <accept|edit|dismiss> --by <tên> [--text <giá trị sửa>] [--at <ISO có múi giờ>]
+                              Duyệt, sửa hoặc bỏ qua một đề xuất. Mốc thời gian mơ hồ bắt buộc có --at (ngày giờ Sale chọn)
 
 Lệnh backfill chỉ xếp việc vào hàng đợi; server (npm run dev) mới là nơi xử lý. Meta chỉ cho lấy chi
 tiết 20 tin gần nhất của mỗi hội thoại nên đây không phải là khôi phục toàn bộ lịch sử.
@@ -205,6 +209,31 @@ async function main(): Promise<number> {
         if (rows.length === 0) console.log('Chưa có lần trích xuất nào.');
         for (const r of rows) console.log(`${r.status}${r.failureReason ? ` (${r.failureReason})` : ''}: ${r.runs}`);
         return 0;
+      }
+      case 'proposals:list': {
+        const id = args[0];
+        if (!id) throw new Error('Thiếu ID hội thoại.');
+        const [conv] = await db.select({ tenantId: conversations.tenantId }).from(conversations).where(eq(conversations.id, id));
+        if (!conv) throw new Error(`Không có hội thoại ${id}.`);
+        const rows = await listPending(db, conv.tenantId, id);
+        if (rows.length === 0) console.log('Không có đề xuất đang chờ.');
+        for (const r of rows) {
+          console.log(`${r.id}  ${r.field.padEnd(16)} ${JSON.stringify(r.value)}${r.flags.length ? `  [${r.flags.join(', ')}]` : ''}`);
+        }
+        return 0;
+      }
+      case 'proposals:decide': {
+        const a = parseDecideArgs(args);
+        const [p] = await db.select({ tenantId: proposals.tenantId }).from(proposals).where(eq(proposals.id, a.proposalId));
+        if (!p) throw new Error(`Không có đề xuất ${a.proposalId}.`);
+        try {
+          const r = await decideProposal(db, { tenantId: p.tenantId, proposalId: a.proposalId, action: a.action, by: a.by, editedText: a.text, chosenAt: a.at }, new Date());
+          console.log(`Đã ${r.status}: ${r.field}${r.value ? ` = ${JSON.stringify(r.value)}` : ''}`);
+          return 0;
+        } catch (err) {
+          if (err instanceof ProposalError) throw new Error(err.message);
+          throw err;
+        }
       }
       default:
         console.error(`Lệnh không hợp lệ: ${command}\n\n${USAGE}`);
