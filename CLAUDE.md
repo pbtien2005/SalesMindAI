@@ -8,7 +8,7 @@ Nguyên tắc sản phẩm:
 - Mọi thông tin AI trích phải kèm câu gốc làm căn cứ.
 - Mốc thời gian mơ hồ thì hỏi lại, không tự suy ra ngày.
 
-**Giai đoạn hiện tại: Module 1 "Tiếp nhận tin nhắn từ Facebook Page"**: chỉ đọc và lưu tin. Chưa có AI, chưa có giao diện. Đề án gốc: `doc/` (không chép lại ở đây).
+**Giai đoạn hiện tại: Module 2 "AI trích xuất thông tin từ tin nhắn"** (kế hoạch: `doc/PLAN-module2.md`). Module 1 "Tiếp nhận tin nhắn từ Facebook Page" đã có code cho mốc 0–6 (mốc 4 và 5 còn chờ thử với Page thật). Module 2 chỉ có service nội bộ và CLI, chưa có HTTP API, đăng nhập hay giao diện. Đề án gốc: `doc/` (không chép lại ở đây).
 
 ## Stack
 - Node.js 26 LTS, TypeScript, Fastify 5 (pino), Vitest
@@ -24,6 +24,9 @@ Nguyên tắc sản phẩm:
 - Không gửi tin nhắn cho khách (module này chỉ đọc).
 - Page token mã hóa khi lưu (AES-256-GCM); không log token; không log nội dung tin nhắn ở mức info.
 - Không hard-code secret; mọi cấu hình qua `.env` (mẫu: `.env.example`).
+- AI (Module 2): chỉ tạo **đề xuất** (`proposals`); dữ liệu đã duyệt mới vào `profile_fields`. Mỗi trường kèm `evidence` là chuỗi con đã kiểm chứng trong tin khách đã lưu, không lưu chuỗi do mô hình viết. Không bao giờ giải biểu thức thời gian mơ hồ thành ngày.
+- AI bật theo từng tenant (`tenants.ai_extraction_enabled`, mặc định tắt); chỉ bật cho khách thật sau khi kiểm tra pháp lý về chuyển dữ liệu ra nước ngoài (Luật 91/2025/QH15, chưa được luật sư xác nhận).
+- Không log nội dung tin, câu gốc hay giá trị AI trích (kể cả mức debug), cũng không log `ANTHROPIC_API_KEY`. Chỉ log số đếm, id và token usage.
 - Chi tiết Meta API nào chưa chắc thì đối chiếu tài liệu chính thức, không đoán. Ghi điểm chưa xác minh vào mục cuối `PROGRESS.md`.
 
 ## Skill (chỉ dùng những skill đã cài, nằm ở `.claude/skills/`)
@@ -52,6 +55,9 @@ Khi một lệnh được tạo thật, bỏ chữ "dự kiến" ở đây. Cầ
 ## Quy trình làm việc theo mốc
 Module 1 chia thành các mốc 0–6:
 0. Môi trường · 1. Kế hoạch · 2. DB và mã hóa token · 3. Webhook, chữ ký, khử trùng · 4. Kết nối Page thật · 5. Backfill tin cũ · 6. Quan sát, README, review
+
+Module 2 chia thành các mốc 0–7 (chi tiết: `doc/PLAN-module2.md`):
+0. Tiền đề (thay đổi echo của Module 1 đã commit) · 1. Kế hoạch · 2. DB · 3. Công cụ tất định (kiểm chứng câu gốc, SĐT, biểu thức thời gian) · 4. Extractor và đánh giá · 5. Pipeline · 6. Service duyệt và CLI · 7. Quan sát, README, review
 
 Sau **mỗi** mốc, theo đúng thứ tự:
 1. Chạy test (và `code-review` với mốc lớn).

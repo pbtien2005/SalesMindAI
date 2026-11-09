@@ -112,3 +112,32 @@ Xem danh sách đầy đủ cuối [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md): �
 Điểm bổ sung (chưa xác minh, từ tài liệu):
 - Đơn vị của `timestamp` trong webhook không được ghi; ví dụ có 13 chữ số nên giả định mili giây, xác minh bằng webhook thật ở mốc 4.
 - Tin có thể nằm trong mảng `standby` thay vì `messaging` nếu Page dùng Handover Protocol; giả định Page không dùng.
+
+---
+
+# PROGRESS — Module 2: AI trích xuất thông tin từ tin nhắn
+
+Kế hoạch chi tiết: [doc/PLAN-module2.md](doc/PLAN-module2.md). Cùng quy ước trạng thái và bằng chứng như Module 1.
+
+| Mốc | Nội dung | Trạng thái | Ngày | Bằng chứng |
+|---|---|---|---|---|
+| 0 | Tiền đề: thay đổi echo của Module 1 (`direction`, `sender_kind`, migration 0002) đã commit và test đạt | bỏ qua theo yêu cầu | 2026-11-09 | Chưa có. Lúc kiểm tra, 19 file đã sửa và 6 file mới của phiên khác chưa commit; `npm run typecheck` sạch, **chưa chạy `npm test`** (tránh đạp lên DB test của phiên kia). **Mốc 2 không bắt đầu được cho tới khi phần này commit.** |
+| 1 | Kế hoạch: tài liệu, cập nhật CLAUDE.md, xác minh API Anthropic | xong | 2026-11-09 | [doc/PLAN-module2.md](doc/PLAN-module2.md); mục "Điểm API Anthropic đã xác minh" trong tài liệu đó đối chiếu bằng tài liệu skill `claude-api` và gói `@anthropic-ai/sdk@1.6.0` tải từ npm (đọc `.d.ts`, `.js`). Chưa chạy code nào, chưa gọi API thật. |
+| 2 | DB: tenants.ai_extraction_enabled, extraction_runs, proposals, profile_fields | chưa làm | | |
+| 3 | Công cụ tất định: kiểm chứng câu gốc, SĐT, biểu thức thời gian | chưa làm | | |
+| 4 | Extractor (Anthropic) và đánh giá | chưa làm | | |
+| 5 | Pipeline: queue, debounce, sweeper, worker | chưa làm | | |
+| 6 | Service duyệt đề xuất và CLI | chưa làm | | |
+| 7 | Quan sát, README, review | chưa làm | | |
+
+## Điểm chưa xác minh của Module 2
+
+| # | Điểm | Trạng thái | Ghi chú |
+|---|---|---|---|
+| 1 | Giới hạn schema của strict decoding (`minLength`, `pattern`) | **chưa xác minh** (mốc 4) | Ghi chú nghiên cứu nói bị cấm; tài liệu skill không nêu. Thử bằng lời gọi thật ở mốc 4; kiểm tra SĐT và ngày làm bằng code dù sao |
+| 2 | Ngưỡng cache 512 token của Haiku 5.5 và Sonnet 5.5 | **đã xác minh một phần** | Skill ghi 512 và dặn "kiểm tra tài liệu prompt caching trước khi dựa vào". Đo bằng `usage.cache_read_input_tokens` ở mốc 4 |
+| 3 | Chất lượng trích xuất tiếng Việt không dấu và teencode | **chưa xác minh** (mốc 4) | Không có benchmark công khai; đo bằng bộ eval tự viết |
+| 4 | Chi phí và độ trễ thực tế của một lần trích | **chưa xác minh** (mốc 4) | Con số trong báo cáo (khoảng 0,27 USD cho 1.000 lần với Haiku 5.5) là ước tính |
+| 5 | Pháp lý: gửi chat khách sang API nước ngoài (Luật 91/2025/QH15, Nghị định 356/2025/NĐ-CP) | **chưa xác minh** | Ghi chú nghiên cứu chỉ đọc bản tóm tắt thứ cấp; cần luật sư đọc văn bản gốc. **Điều kiện chặn** trước khi `ai:enable` cho khách thật |
+| 6 | `libphonenumber-js` có phủ mọi đầu số di động sau 2018 không | **chưa xác minh** (mốc 3) | Kiểm tra bằng bảng test ca |
+| 7 | Dữ liệu đơn vị hành chính sau sáp nhập 2025 (giấy phép bộ dữ liệu `thanglequoc/vietnamese-provinces-database` chưa kiểm tra) | **chưa xác minh** | Module 2 không chuẩn hóa địa chỉ; chỉ lưu địa chỉ thô kèm câu gốc |
