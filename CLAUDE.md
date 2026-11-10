@@ -8,7 +8,9 @@ Nguyên tắc sản phẩm:
 - Mọi thông tin AI trích phải kèm câu gốc làm căn cứ.
 - Mốc thời gian mơ hồ thì hỏi lại, không tự suy ra ngày.
 
-**Giai đoạn hiện tại: Module 2 "AI trích xuất thông tin từ tin nhắn"** (kế hoạch: `doc/PLAN-module2.md`). Module 1 "Tiếp nhận tin nhắn từ Facebook Page" đã có code cho mốc 0–6 (mốc 4 và 5 còn chờ thử với Page thật). Module 2 chỉ có service nội bộ và CLI, chưa có HTTP API, đăng nhập hay giao diện. Đề án gốc: `doc/` (không chép lại ở đây).
+**Giai đoạn hiện tại: Module 2 "AI trích xuất thông tin từ tin nhắn"** (kế hoạch: `doc/PLAN-module2.md`). Module 1 "Tiếp nhận tin nhắn từ Facebook Page" đã có code cho mốc 0–6 (mốc 4 và 5 còn chờ thử với Page thật). Module 2 có service nội bộ, CLI và (chỉ để demo) một API `/api/*`; giao diện `web/` mới có khung `package.json`, chưa có mã nguồn; xem mục "Demo MVP" dưới đây; chưa có đăng nhập thật. Đề án gốc: `doc/` (không chép lại ở đây).
+
+**Demo MVP** (kế hoạch: `doc/PLAN-demo-mvp.md`, `doc/PLAN-backend.md`; kịch bản: `doc/KICH-BAN-DEMO-MVP.md`; chạy: `doc/CHAY-DEMO.md`). Phạm vi cảnh 0–3 và 6. API demo và đồng hồ tua được chỉ tồn tại khi `DEMO_MODE=true`: **không có đăng nhập**, chỉ nghe `127.0.0.1`, bị từ chối ở `NODE_ENV=production`. Vai trò `x-demo-role` chỉ để ghi "ai duyệt", không phải bảo mật. Số lần bám, P1, quá hạn, lịch nhắc **tính khi đọc** từ dữ liệu và `now`, không lưu số đếm; mọi hàm nghiệp vụ nhận `now` làm tham số.
 
 ## Stack
 - Node.js 26 LTS, TypeScript, Fastify 5 (pino), Vitest
@@ -28,6 +30,7 @@ Nguyên tắc sản phẩm:
 - Page token mã hóa khi lưu (AES-256-GCM); không log token; không log nội dung tin nhắn ở mức info.
 - Không hard-code secret; mọi cấu hình qua `.env` (mẫu: `.env.example`).
 - AI (Module 2): chỉ tạo **đề xuất** (`proposals`); dữ liệu đã duyệt mới vào `profile_fields`. Mỗi trường kèm `evidence` là chuỗi con đã kiểm chứng trong tin khách đã lưu, không lưu chuỗi do mô hình viết. Không bao giờ giải biểu thức thời gian mơ hồ thành ngày.
+- `AI_MODE=offline` (mặc định, luật tất định, không gọi mạng) hoặc `live` (Claude). `live` phải đặt tường minh, không tự bật khi có `ANTHROPIC_API_KEY`. SĐT trích bằng code, không qua mô hình. Duyệt mốc thời gian có cờ `needs_clarification` bắt buộc Sale chọn `chosenAt`; không có đường nào tự điền ngày.
 - AI bật theo từng tenant (`tenants.ai_extraction_enabled`, mặc định tắt); chỉ bật cho khách thật sau khi kiểm tra pháp lý về chuyển dữ liệu ra nước ngoài (Luật 91/2025/QH15, chưa được luật sư xác nhận).
 - Không log nội dung tin, câu gốc hay giá trị AI trích (kể cả mức debug), cũng không log `ANTHROPIC_API_KEY`. Chỉ log số đếm, id và token usage.
 - Chi tiết Meta API nào chưa chắc thì đối chiếu tài liệu chính thức, không đoán. Ghi điểm chưa xác minh vào mục cuối `PROGRESS.md`.

@@ -159,3 +159,4 @@ doc/                      kế hoạch, hướng dẫn kiểm tra với Page th�
 - [doc/PLAN-module1.md](doc/PLAN-module1.md): kế hoạch Module 1
 - [doc/PLAN-sua-module1-theo-bao-cao.md](doc/PLAN-sua-module1-theo-bao-cao.md): các thay đổi Module 1 theo báo cáo nghiên cứu (echo, tương tác, standby, chính sách)
 - [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md): kiểm tra với Page thật
+- [doc/CHAY-DEMO.md](doc/CHAY-DEMO.md): chạy demo MVP (`DEMO_MODE`, AI offline, đồng hồ demo)
