@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { ConsoleMailer, UnavailableMailer } from './auth/mailer.js';
 import { buildApp } from './app.js';
 import { loadEnv } from './config/env.js';
@@ -55,6 +56,7 @@ const app = buildApp(
       crypto,
       publicBaseUrl: env.PUBLIC_BASE_URL,
     },
+    webDist: resolve(env.WEB_DIST_DIR ?? '../web/dist'),
     auth: {
       db: dbHandle.db,
       mailer: env.NODE_ENV === 'production' ? new UnavailableMailer() : new ConsoleMailer((m) => app.log.info(m)),
@@ -101,7 +103,7 @@ if (!loopback && !env.TRUST_PROXY) {
 
 try {
   // API demo không có đăng nhập: ở DEMO_MODE chỉ nghe localhost (tunnel tới localhost vẫn nhận được webhook).
-  await app.listen({ port: env.PORT, host: env.DEMO_MODE ? '127.0.0.1' : '0.0.0.0' });
+  await app.listen({ port: env.PORT, host: env.HOST ?? (env.DEMO_MODE ? '127.0.0.1' : '0.0.0.0') });
   if (env.DEMO_MODE) app.log.warn('DEMO_MODE=true: API demo /api/* đang bật, KHÔNG có đăng nhập, chỉ nghe 127.0.0.1. Không dùng cho dữ liệu khách thật.');
 } catch (err) {
   app.log.error({ err }, 'không mở được cổng');

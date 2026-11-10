@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import type { HomeData } from './api/types';
-import { detail, summary } from './test/fixtures';
+import { detail, meHa, summary } from './test/fixtures';
 import { json, mockFetch, renderApp, type Handler } from './test/render';
 
 afterEach(() => {
@@ -20,7 +20,7 @@ const mai = summary({ id: 'mai', displayName: 'Cô Mai', isNew: false, waitingOn
 
 const HOME: HomeData = {
   now: NOW,
-  role: 'lan',
+  role: 'sale',
   p1: [thu],
   overdue: [
     { taskId: 't1', conversationId: 'duc', displayName: 'Anh Đức', title: 'Gọi lại báo giá', dueAt: '2026-11-09T08:00:00.000Z' },
@@ -43,7 +43,7 @@ function server(over: Partial<{ home: HomeData; conversations: unknown[] }> = {}
   return mockFetch(async (url, init) => {
     const custom = await extra?.(url, init);
     if (custom) return custom;
-    if (url === '/api/now') return json({ now: NOW, role: 'lan', roleName: 'Lan' });
+    if (url === '/api/now') return json({ now: NOW, role: 'sale', roleName: 'Lan' });
     if (url === '/api/home') return json(over.home ?? HOME);
     if (url === '/api/inbox') return json({ now: NOW, conversations: over.conversations ?? [thu, duc, mai] });
     if (url === '/api/personas') return json({ personas: [{ key: 'minh', displayName: 'Facebook: anh Minh' }, { key: 'thu', displayName: 'Chị Thu' }] });
@@ -110,7 +110,7 @@ describe('Trang chủ (cảnh 0)', () => {
   });
 
   it('chưa có dữ liệu demo: hướng dẫn thay vì màn trống', async () => {
-    mockFetch((url) => (url === '/api/now' ? json({ now: NOW, role: 'lan', roleName: 'Lan' }) : json({ error: { code: 'no_demo_data', message: 'Chưa có dữ liệu demo.' } }, 409)));
+    mockFetch((url) => (url === '/api/now' ? json({ now: NOW, role: 'sale', roleName: 'Lan' }) : json({ error: { code: 'no_demo_data', message: 'Chưa có dữ liệu demo.' } }, 409)));
     renderApp(<App />);
     expect(await screen.findByText('Chưa có dữ liệu demo')).toBeTruthy();
   });
@@ -136,15 +136,10 @@ describe('Trợ năng cơ bản', () => {
 });
 
 describe('Trang chủ (cảnh 6): chị Hà và số liệu AI', () => {
-  it('đổi sang chị Hà: tiêu đề đổi, request mang header ha, hiện 4 số liệu AI', async () => {
-    const f = server();
-    const user = userEvent.setup();
-    renderApp(<App />);
-    await screen.findByRole('heading', { name: 'Trang chủ của Lan' });
-    await user.click(screen.getByRole('button', { name: 'Chị Hà (Quản lý)' }));
+  it('quản lý (chị Hà): tiêu đề "đội của", hiện 4 số liệu AI', async () => {
+    server();
+    renderApp(<App />, meHa);
     expect(await screen.findByRole('heading', { name: 'Trang chủ, đội của chị Hà' })).toBeTruthy();
-
-    await waitFor(() => expect(f.calls().some((c) => c.url === '/api/home' && c.init.headers['x-demo-role'] === 'ha')).toBe(true));
     const ai = screen.getByRole('region', { name: 'Số liệu AI' });
     const stat = (label: string) => within(ai).getByText(label).previousElementSibling?.textContent;
     expect(stat('Trường AI tự điền')).toBe('3');

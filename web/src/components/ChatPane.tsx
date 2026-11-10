@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { formatDay, formatTime, formatWait } from '../api/format';
 import { usePageMessage, useStopFollowup } from '../api/hooks';
-import type { ConversationDetail, MessageView, Role } from '../api/types';
+import type { ConversationDetail, MessageView } from '../api/types';
+import { useSession } from '../state/session';
 import { allEvidence } from '../lib/card';
 import { segmentText } from '../lib/evidence';
 import { initial, senderLabel } from '../lib/fields';
@@ -40,7 +41,8 @@ function Bubble({ m, ranges, flash }: { m: MessageView; ranges: ReturnType<typeo
   );
 }
 
-export function ChatPane({ detail, role, flashId }: { detail: ConversationDetail; role: Role; flashId: string | null }) {
+export function ChatPane({ detail, flashId }: { detail: ConversationDetail; flashId: string | null }) {
+  const demo = useSession().me.demoTenant;
   const { summary, messages } = detail;
   const stop = useStopFollowup();
   const send = usePageMessage();
@@ -102,7 +104,7 @@ export function ChatPane({ detail, role, flashId }: { detail: ConversationDetail
             Bám {f.count}/{f.max}
           </span>
         ) : null}
-        {role === 'lan' && f.count > 0 && !f.stopped ? (
+        {f.count > 0 && !f.stopped ? (
           confirmStop ? (
             <span className="flex items-center gap-1.5">
               <span className="text-xs text-ink-3">Ngừng bám khách này?</span>
@@ -150,7 +152,7 @@ export function ChatPane({ detail, role, flashId }: { detail: ConversationDetail
       </div>
 
       <form onSubmit={submit} className="flex flex-none flex-col gap-2 border-t border-line bg-white px-[18px] py-3">
-        {role === 'lan' ? (
+        {demo ? (
           <>
             <div className="text-xs text-ink-3">
               Demo: tin gõ ở đây được giả lập như Lan trả lời ở Page Inbox. SalesMind AI không gửi tin thật cho khách.
@@ -175,7 +177,7 @@ export function ChatPane({ detail, role, flashId }: { detail: ConversationDetail
             {send.error ? <ErrorBanner error={send.error} /> : null}
           </>
         ) : (
-          <div className="text-xs text-ink-3">Chị Hà xem ở chế độ quản lý. Chuyển sang Lan để trả lời hội thoại.</div>
+          <div className="text-xs text-ink-3">Trả lời khách ở hộp thư của Page trên Facebook. Gửi tin ngay từ SalesMind sẽ có ở bản sau.</div>
         )}
       </form>
     </section>

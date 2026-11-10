@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, setApiRole } from './client';
+import { api, ApiError, setUnauthorizedHandler } from './client';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -10,21 +10,42 @@ const reply = (body: unknown, status = 200) => fetchMock.mockImplementation(asyn
 beforeEach(() => {
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
-  setApiRole('lan');
+  setUnauthorizedHandler(null);
 });
 afterEach(() => vi.unstubAllGlobals());
 
 const lastInit = () => fetchMock.mock.calls.at(-1)?.[1] as RequestInit & { headers: Record<string, string> };
 
 describe('api client', () => {
-  it('gửi header x-demo-role theo vai trò hiện tại', async () => {
-    reply({ now: 'x', role: 'lan', roleName: 'Lan' });
+  it('mọi request mang header chống CSRF và gửi cookie cùng origin; không còn header vai trò demo', async () => {
+    reply({ now: 'x', role: 'sale', roleName: 'Lan' });
     await api.now();
-    expect(lastInit().headers['x-demo-role']).toBe('lan');
+    expect(lastInit().headers['x-requested-with']).toBe('salesmind');
+    expect(lastInit().headers['x-demo-role']).toBeUndefined();
+    expect(lastInit().credentials).toBe('same-origin');
+    await api.advanceMinutes(5);
+    expect(lastInit().headers['x-requested-with']).toBe('salesmind');
+  });
 
-    setApiRole('ha');
-    await api.now();
-    expect(lastInit().headers['x-demo-role']).toBe('ha');
+  it('401 ở route nghiệp vụ gọi bộ xử lý phiên hết hạn; 401 khi đăng nhập thì không', async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    reply({ error: { code: 'unauthenticated', message: 'Chưa đăng nhập.' } }, 401);
+    await expect(api.home()).rejects.toMatchObject({ status: 401, code: 'unauthenticated' });
+    expect(handler).toHaveBeenCalledTimes(1);
+    reply({ error: { code: 'invalid_credentials', message: 'Email hoặc mật khẩu không đúng.' } }, 401);
+    await expect(api.login('a@b.vn', 'sai')).rejects.toMatchObject({ code: 'invalid_credentials' });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('me: chưa đăng nhập trả null, lỗi khác thì ném', async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    reply({ error: { code: 'unauthenticated', message: 'x' } }, 401);
+    expect(await api.me()).toBeNull();
+    expect(handler).not.toHaveBeenCalled(); // /api/auth/me tự xử lý, không kích hoạt "hết phiên"
+    reply({ error: { code: 'boom', message: 'x' } }, 500);
+    await expect(api.me()).rejects.toBeInstanceOf(ApiError);
   });
 
   it('POST gửi JSON và content-type; GET không có body', async () => {

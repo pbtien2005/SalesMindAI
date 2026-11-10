@@ -47,3 +47,9 @@ export const detail = (over: Partial<ConversationDetail> = {}): ConversationDeta
   tasks: [],
   ...over,
 });
+
+import type { Me } from '../api/types';
+
+/** Lan (sale) của doanh nghiệp demo, đúng như `GET /api/auth/me` trả về. */
+export const meLan: Me = { id: 'u-lan', email: 'lan@demo.local', displayName: 'Lan', role: 'sale', tenantId: 't-demo', emailVerified: true, demoTenant: true };
+export const meHa: Me = { ...meLan, id: 'u-ha', email: 'ha@demo.local', displayName: 'chị Hà', role: 'manager' };

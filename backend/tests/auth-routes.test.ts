@@ -98,7 +98,7 @@ describe('me, đăng xuất, CSRF', () => {
     const cookie = cookieOf(await login());
     const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
     expect(me.statusCode).toBe(200);
-    expect(me.json().user).toMatchObject({ email: 'lan@shop.vn', displayName: 'Lan', role: 'sale', tenantId, emailVerified: false });
+    expect(me.json().user).toMatchObject({ email: 'lan@shop.vn', displayName: 'Lan', role: 'sale', tenantId, emailVerified: false, demoTenant: false });
     expect((await post('/api/auth/logout', {}, cookie)).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).statusCode).toBe(401);
   });
@@ -178,7 +178,7 @@ describe('đăng ký tự do', () => {
     expect(mailer.sent).toHaveLength(1);
     const token = /verify=([A-Za-z0-9_-]{43})/.exec(mailer.sent[0]!.text)![1]!;
     const cookie = cookieOf(await login('chu@moi.vn'));
-    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).json().user).toMatchObject({ role: 'owner', emailVerified: false });
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).json().user).toMatchObject({ role: 'owner', emailVerified: false, demoTenant: false });
     expect((await post('/api/auth/verify-email', { token })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).json().user.emailVerified).toBe(true);
     expect((await post('/api/auth/verify-email', { token })).statusCode).toBe(400);

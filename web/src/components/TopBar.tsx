@@ -1,19 +1,24 @@
 import { useState } from 'react';
 import { formatDateTime } from '../api/format';
-import { useAdvanceClock, useNow, useResetDemo } from '../api/hooks';
+import { useAdvanceClock, useDemoLogin, useLogout, useNow, useResetDemo } from '../api/hooks';
 import type { Role } from '../api/types';
 import { useSession } from '../state/session';
 
-const ROLES: Array<{ key: Role; label: string }> = [
-  { key: 'lan', label: 'Lan (Sale)' },
-  { key: 'ha', label: 'Chị Hà (Quản lý)' },
+const QUICK: Array<{ key: 'lan' | 'ha'; email: string; label: string }> = [
+  { key: 'lan', email: 'lan@demo.local', label: 'Lan (Sale)' },
+  { key: 'ha', email: 'ha@demo.local', label: 'Chị Hà (Quản lý)' },
 ];
+
+const ROLE_LABEL: Record<Role, string> = { owner: 'Chủ doanh nghiệp', manager: 'Quản lý', sale: 'Sale' };
 
 const clockBtn =
   'h-8 rounded-lg border border-navy-line bg-transparent px-3 text-white hover:bg-navy-2 disabled:opacity-50';
 
 export function TopBar() {
-  const { role, setRole, simulatorOpen, toggleSimulator } = useSession();
+  const { me, simulatorOpen, toggleSimulator } = useSession();
+  const demo = me.demoTenant;
+  const demoLogin = useDemoLogin();
+  const logout = useLogout();
   const now = useNow();
   const advance = useAdvanceClock();
   const reset = useResetDemo();
@@ -25,7 +30,7 @@ export function TopBar() {
   return (
     <header className="flex h-[52px] flex-none items-center gap-4 bg-navy px-5 text-white">
       <div className="text-base font-bold tracking-tight">SalesMind AI</div>
-      <div className="rounded-full bg-navy-2 px-2.5 py-1 text-xs text-navy-text">Chế độ demo, không có đăng nhập</div>
+      {demo ? <div className="rounded-full bg-navy-2 px-2.5 py-1 text-xs text-navy-text">Chế độ demo</div> : null}
 
       <div className="grow" />
 
@@ -35,6 +40,7 @@ export function TopBar() {
         </span>
       ) : null}
 
+      {demo ? (
       <div className="flex items-center gap-2">
         <span className="text-xs text-navy-text" id="clock-label">
           Đồng hồ demo
@@ -70,9 +76,11 @@ export function TopBar() {
           </button>
         )}
       </div>
+      ) : null}
 
-      <div className="h-6 w-px bg-navy-line" aria-hidden="true" />
+      {demo ? <div className="h-6 w-px bg-navy-line" aria-hidden="true" /> : null}
 
+      {demo ? (
       <button
         type="button"
         aria-expanded={simulatorOpen}
@@ -83,23 +91,40 @@ export function TopBar() {
       >
         Giả lập
       </button>
+      ) : null}
 
-      <div role="group" aria-label="Vai trò" className="flex rounded-lg bg-navy-2 p-[3px]">
-        {ROLES.map((r) => (
-          <button
-            key={r.key}
-            type="button"
-            aria-pressed={role === r.key}
-            onClick={() => setRole(r.key)}
-            className={
-              role === r.key
-                ? 'h-[30px] rounded-md border-0 bg-white px-3.5 font-semibold text-navy'
-                : 'h-[30px] rounded-md border-0 bg-transparent px-3.5 text-[#dce4f0] hover:bg-navy-line/40'
-            }
-          >
-            {r.label}
-          </button>
-        ))}
+      {demo ? (
+        <div role="group" aria-label="Vào nhanh" className="flex rounded-lg bg-navy-2 p-[3px]">
+          {QUICK.map((r) => {
+            const active = me.email === r.email;
+            return (
+              <button
+                key={r.key}
+                type="button"
+                aria-pressed={active}
+                disabled={demoLogin.isPending}
+                onClick={() => (active ? undefined : demoLogin.mutate(r.key))}
+                className={
+                  active
+                    ? 'h-[30px] rounded-md border-0 bg-white px-3.5 font-semibold text-navy'
+                    : 'h-[30px] rounded-md border-0 bg-transparent px-3.5 text-[#dce4f0] hover:bg-navy-line/40'
+                }
+              >
+                {r.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-2">
+        <div className="text-right leading-tight">
+          <div className="text-sm font-semibold">{me.displayName}</div>
+          <div className="text-xs text-navy-text">{ROLE_LABEL[me.role]}</div>
+        </div>
+        <button type="button" className={clockBtn} disabled={logout.isPending} onClick={() => logout.mutate()}>
+          Đăng xuất
+        </button>
       </div>
     </header>
   );

@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { getApiRole, setApiRole } from '../api/client';
-import type { Role } from '../api/types';
+import type { Me, Role } from '../api/types';
 
 export type View = 'chat' | 'home';
 
 interface Session {
+  /** Người đang đăng nhập (từ `GET /api/auth/me`). */
+  me: Me;
   role: Role;
-  setRole: (r: Role) => void;
   view: View;
   setView: (v: View) => void;
   /** Hội thoại đang mở ở màn Hội thoại. */
@@ -22,16 +22,9 @@ interface Session {
 
 const Ctx = createContext<Session | null>(null);
 
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [role, setRoleState] = useState<Role>(getApiRole());
+export function SessionProvider({ me, children }: { me: Me; children: ReactNode }) {
   const [view, setView] = useState<View>('home');
   const [conversationId, selectConversation] = useState<string | null>(null);
-
-  // Đặt vai trò cho lớp API NGAY khi đổi, trước lần render kế tiếp, để request tiếp theo mang đúng header.
-  const setRole = useCallback((r: Role) => {
-    setApiRole(r);
-    setRoleState(r);
-  }, []);
 
   const openConversation = useCallback((id: string) => {
     selectConversation(id);
@@ -43,8 +36,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const closeSimulator = useCallback(() => setSimulatorOpen(false), []);
 
   const value = useMemo<Session>(
-    () => ({ role, setRole, view, setView, conversationId, selectConversation, openConversation, simulatorOpen, toggleSimulator, closeSimulator }),
-    [role, setRole, view, conversationId, openConversation, simulatorOpen, toggleSimulator, closeSimulator],
+    () => ({ me, role: me.role, view, setView, conversationId, selectConversation, openConversation, simulatorOpen, toggleSimulator, closeSimulator }),
+    [me, view, conversationId, openConversation, simulatorOpen, toggleSimulator, closeSimulator],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

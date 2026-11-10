@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { vi } from 'vitest';
-import { setApiRole } from '../api/client';
+import type { Me } from '../api/types';
+import { meLan } from './fixtures';
 import { SessionProvider } from '../state/session';
 
 export const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -18,12 +19,11 @@ export function mockFetch(handler: Handler) {
   return { fn, calls, posts, body: (i: number) => JSON.parse(posts()[i]?.init.body as string) as Record<string, unknown> };
 }
 
-export function renderApp(ui: ReactElement) {
-  setApiRole('lan');
+export function renderApp(ui: ReactElement, me: Me = meLan) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <SessionProvider>{ui}</SessionProvider>
+      <SessionProvider me={me}>{ui}</SessionProvider>
     </QueryClientProvider>,
   );
 }

@@ -86,6 +86,10 @@ const envSchema = z.object({
   /** Số tin gần nhất (cả hai chiều) đưa cho AI đọc. */
   AI_CONTEXT_MESSAGES: z.coerce.number().int().min(1).max(200).default(30),
 
+  /** Thư mục bản build của giao diện (`npm run build` trong web/). Bỏ trống: `../web/dist` so với thư mục chạy. Không có thư mục thì không phục vụ giao diện. */
+  WEB_DIST_DIR: z.string().trim().optional().transform((v) => (v ? v : undefined)),
+  /** Địa chỉ nghe. Bỏ trống: 127.0.0.1 khi DEMO_MODE, ngược lại 0.0.0.0. */
+  HOST: z.string().trim().optional().transform((v) => (v ? v : undefined)),
   /** Đăng ký tự do (`open`) hay chỉ tạo tài khoản bằng CLI và lời mời (`closed`, mặc định). */
   SIGNUP_MODE: z.enum(['open', 'closed']).default('closed'),
   /** Phiên hết hạn sau bấy nhiêu ngày không dùng, và tối đa bấy nhiêu ngày kể từ lúc đăng nhập. */

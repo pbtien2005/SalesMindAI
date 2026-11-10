@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, getApiRole } from './client';
+import { api, ApiError } from './client';
 import type { DecideBody } from './types';
 
 /** Giao diện đọc lại dữ liệu mỗi 2 giây (không dùng SSE/WebSocket, xem doc/PLAN-demo-mvp.md). */
@@ -8,8 +8,41 @@ export const POLL_MS = 2000;
 /** Lỗi 4xx từ server là lỗi nghiệp vụ, thử lại cũng vậy; chỉ thử lại khi mất mạng tạm thời. */
 export const shouldRetry = (count: number, err: unknown): boolean => !(err instanceof ApiError && err.status !== 0) && count < 2;
 
-// Khóa truy vấn có kèm vai trò vì `/home` trả `role`.
-const key = (...parts: unknown[]) => [getApiRole(), ...parts] as const;
+// Đổi người dùng thì cache bị xóa sạch (xem AuthGate), nên khóa không cần kèm người dùng.
+const key = (...parts: unknown[]) => parts;
+
+export const useMe = () => useQuery({ queryKey: ['me'], queryFn: api.me, retry: shouldRetry, refetchOnWindowFocus: true });
+export const useAuthConfig = () => useQuery({ queryKey: ['authConfig'], queryFn: api.authConfig, staleTime: Infinity, retry: shouldRetry });
+
+/** Sau đăng nhập hoặc đăng xuất: bỏ mọi dữ liệu của người trước (không để lọt sang người sau), rồi đọc lại `me`. */
+function useSwitchUser() {
+  const qc = useQueryClient();
+  return async () => {
+    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'authConfig' && q.queryKey[0] !== 'me' });
+    await qc.invalidateQueries({ queryKey: ['me'] });
+  };
+}
+
+export function useLogin() {
+  const switchUser = useSwitchUser();
+  return useMutation({ mutationFn: (v: { email: string; password: string }) => api.login(v.email, v.password), onSuccess: switchUser });
+}
+
+export function useDemoLogin() {
+  const switchUser = useSwitchUser();
+  return useMutation({ mutationFn: (as: 'lan' | 'ha') => api.demoLogin(as), onSuccess: switchUser });
+}
+
+export function useLogout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.logout(),
+    onSettled: () => {
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'authConfig' && q.queryKey[0] !== 'me' });
+      qc.setQueryData(['me'], null);
+    },
+  });
+}
 
 export const useNow = () => useQuery({ queryKey: key('now'), queryFn: api.now, refetchInterval: POLL_MS, retry: shouldRetry });
 export const usePersonas = () => useQuery({ queryKey: ['personas'], queryFn: api.personas, staleTime: Infinity, retry: shouldRetry });
@@ -29,7 +62,7 @@ export const useHistory = (id: string | null) =>
 /** Sau mọi thao tác ghi, làm mới toàn bộ dữ liệu đọc (đồng hồ, hộp thư, Trang chủ, hội thoại). */
 function useRefreshAll() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'personas' });
+  return () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'personas' && q.queryKey[0] !== 'me' && q.queryKey[0] !== 'authConfig' });
 }
 
 export function useAdvanceClock() {

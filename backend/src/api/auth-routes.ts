@@ -10,6 +10,7 @@ import { AuthError, authenticate, createTenantWithOwner, findUserByEmail, setPas
 import type { Db } from '../db/client.js';
 import { DEMO_USERS } from '../demo/seed.js';
 import { auditLog, users } from '../db/schema.js';
+import { isDemoTenant } from './scope.js';
 import { apiError, cookieName, makeRequireAuth } from './guard.js';
 
 export interface AuthRouteOptions {
@@ -104,7 +105,8 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts
 
   app.get('/api/auth/me', { preHandler: requireAuth }, async (req) => {
     const a = req.auth!;
-    return { user: { id: a.userId, email: a.email, displayName: a.displayName, role: a.role, tenantId: a.tenantId, emailVerified: a.emailVerified } };
+    const demoTenant = opts.demoMode === true && (await isDemoTenant(db, a.tenantId));
+    return { user: { id: a.userId, email: a.email, displayName: a.displayName, role: a.role, tenantId: a.tenantId, emailVerified: a.emailVerified, demoTenant } };
   });
 
   app.post('/api/auth/verify-email', async (req, reply) => {

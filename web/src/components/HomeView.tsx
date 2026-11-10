@@ -98,7 +98,7 @@ function AiStatsBlock({ ai }: { ai: HomeData['ai'] }) {
 /** Trang chủ quản lý (cảnh 0 và 6). */
 export function HomeView() {
   const home = useHome();
-  const { role, openConversation } = useSession();
+  const { me, role, openConversation } = useSession();
 
   if (home.error) {
     return (
@@ -119,7 +119,7 @@ export function HomeView() {
   return (
     <Main className="flex flex-col gap-[18px] overflow-auto px-7 py-6">
       <div className="flex items-baseline gap-3">
-        <h1 className="m-0 text-[22px] font-bold">{role === 'ha' ? 'Trang chủ, đội của chị Hà' : 'Trang chủ của Lan'}</h1>
+        <h1 className="m-0 text-[22px] font-bold">{role === 'sale' ? `Trang chủ của ${me.displayName}` : `Trang chủ, đội của ${me.displayName}`}</h1>
         <span className="text-ink-3">{formatDateTime(h.now)}</span>
       </div>
 

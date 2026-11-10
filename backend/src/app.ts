@@ -13,6 +13,7 @@ import { oauthRoutes, type OAuthRouteOptions } from './auth/oauth-routes.js';
 import type { WebhookPoster } from './demo/simulator.js';
 import { healthRoutes, type ReadinessCheck } from './health.js';
 import type { WebhookQueue } from './queue/boss.js';
+import { hasWebBuild, registerWebStatic } from './web-static.js';
 import { webhookRoutes } from './webhook/routes.js';
 
 export interface AppDeps {
@@ -32,6 +33,8 @@ export interface AppDeps {
   api?: Pick<ApiOptions, 'db' | 'crypto' | 'log' | 'demoMode'>;
   /** Có thì bật tài khoản: `/api/auth/*`, cookie phiên và chống CSRF cho mọi `/api/*`. */
   auth?: AuthRouteOptions;
+  /** Thư mục bản build của `web/`. Có `index.html` thì backend phục vụ luôn giao diện (cùng origin). */
+  webDist?: string;
 }
 
 /**
@@ -154,6 +157,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps?: AppDeps): Fasti
       });
     }
   }
+
+  if (deps?.webDist && hasWebBuild(deps.webDist)) registerWebStatic(app, deps.webDist);
 
   return app;
 }

@@ -4,7 +4,25 @@
  * `backend/src/extraction/proposals.ts`. Mọi thời điểm là chuỗi ISO (JSON hóa từ Date).
  */
 
-export type Role = 'lan' | 'ha';
+/** Vai trò trong doanh nghiệp. */
+export type Role = 'owner' | 'manager' | 'sale';
+
+export interface Me {
+  id: string;
+  email: string;
+  displayName: string;
+  role: Role;
+  tenantId: string;
+  emailVerified: boolean;
+  /** Thuộc doanh nghiệp demo (chỉ khi server bật DEMO_MODE): có đồng hồ tua, Bảng Giả lập, Đặt lại demo. */
+  demoTenant: boolean;
+}
+
+export interface AuthConfig {
+  signupOpen: boolean;
+  /** Server bật DEMO_MODE: có nút vào nhanh bằng tài khoản Lan hoặc chị Hà. */
+  demoLogin: boolean;
+}
 
 export interface FollowupStatus {
   count: number;

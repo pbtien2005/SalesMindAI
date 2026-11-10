@@ -4,7 +4,8 @@ Kịch bản: [KICH-BAN-DEMO-MVP.md](KICH-BAN-DEMO-MVP.md). Kế hoạch: [PLAN-
 
 ## Cảnh báo trước khi chạy
 
-- `DEMO_MODE=true` bật API `/api/*` **không có đăng nhập**. Server chỉ nghe `127.0.0.1` và từ chối chạy khi `NODE_ENV=production`. Không dùng dữ liệu khách thật.
+- `DEMO_MODE=true` bật route demo (đồng hồ tua, giả lập, đặt lại) và nút **vào nhanh không cần mật khẩu** (Lan, chị Hà) cho tenant demo. Server chỉ nghe `127.0.0.1` và từ chối chạy khi `NODE_ENV=production`. Không dùng dữ liệu khách thật, và **không mở tunnel khi DEMO_MODE bật** (ai có địa chỉ tunnel vào được tenant demo). Khi dùng dữ liệu thật hãy chạy với `DEMO_MODE=false` và tạo tài khoản bằng CLI: `echo "mật-khẩu" | npm run cli -- user:create <email> <tên> --tenant <id> --role owner`.
+- Sau `npm run build` trong `web/`, backend phục vụ giao diện tại cổng 3000 (không cần chạy Vite). Trên máy có `wslrelay` chiếm `[::1]`, dùng `127.0.0.1` thay `localhost` trong `DATABASE_URL`.
 - `AI_MODE=offline` là bộ trích bằng luật, không gọi mạng, không cần khóa. Nó chỉ hiểu các câu mẫu trong kịch bản và biến thể gần (có hoặc không dấu). Chưa kiểm chứng với Claude thật: để thử, đặt `AI_MODE=live` và `ANTHROPIC_API_KEY` (gửi chat ra nước ngoài, chỉ dùng câu tự viết).
 - Đồng hồ demo **trôi theo giờ thật** từ mốc đã đặt. Để lâu rồi mới diễn thì giờ đã lệch: chạy `demo:reset` ngay trước khi diễn.
 - Tin của khách là tin giả có ký đúng chữ ký, đi qua `POST /webhook` thật. Chưa dùng Page Facebook thật.
