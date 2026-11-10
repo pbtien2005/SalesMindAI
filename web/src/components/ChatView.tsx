@@ -17,6 +17,11 @@ export function ChatView() {
   const effectiveId = list.some((c) => c.id === conversationId) ? conversationId : (list[0]?.id ?? null);
   const detail = useConversation(effectiveId);
 
+  // Giữ phiên đồng bộ với hội thoại đang hiển thị (Bảng Giả lập dựa vào đó để chọn sẵn hội thoại).
+  useEffect(() => {
+    if (effectiveId !== null && effectiveId !== conversationId) selectConversation(effectiveId);
+  }, [effectiveId, conversationId, selectConversation]);
+
   const [flashId, setFlashId] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);

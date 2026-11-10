@@ -14,6 +14,10 @@ interface Session {
   selectConversation: (id: string | null) => void;
   /** Mở hội thoại từ nơi khác (ví dụ thẻ P1 ở Trang chủ): chuyển sang màn Hội thoại. */
   openConversation: (id: string) => void;
+  /** Bảng Giả lập (chỉ dành cho demo). */
+  simulatorOpen: boolean;
+  toggleSimulator: () => void;
+  closeSimulator: () => void;
 }
 
 const Ctx = createContext<Session | null>(null);
@@ -34,9 +38,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setView('chat');
   }, []);
 
+  const [simulatorOpen, setSimulatorOpen] = useState(false);
+  const toggleSimulator = useCallback(() => setSimulatorOpen((o) => !o), []);
+  const closeSimulator = useCallback(() => setSimulatorOpen(false), []);
+
   const value = useMemo<Session>(
-    () => ({ role, setRole, view, setView, conversationId, selectConversation, openConversation }),
-    [role, setRole, view, conversationId, openConversation],
+    () => ({ role, setRole, view, setView, conversationId, selectConversation, openConversation, simulatorOpen, toggleSimulator, closeSimulator }),
+    [role, setRole, view, conversationId, openConversation, simulatorOpen, toggleSimulator, closeSimulator],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

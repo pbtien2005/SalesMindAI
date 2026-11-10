@@ -13,7 +13,7 @@ const clockBtn =
   'h-8 rounded-lg border border-navy-line bg-transparent px-3 text-white hover:bg-navy-2 disabled:opacity-50';
 
 export function TopBar() {
-  const { role, setRole } = useSession();
+  const { role, setRole, simulatorOpen, toggleSimulator } = useSession();
   const now = useNow();
   const advance = useAdvanceClock();
   const reset = useResetDemo();
@@ -72,6 +72,16 @@ export function TopBar() {
       </div>
 
       <div className="h-6 w-px bg-navy-line" aria-hidden="true" />
+
+      <button
+        type="button"
+        aria-expanded={simulatorOpen}
+        aria-controls="simulator-panel"
+        onClick={toggleSimulator}
+        className={`h-8 rounded-lg border px-3 ${simulatorOpen ? 'border-white bg-white font-semibold text-navy' : 'border-navy-line bg-transparent text-white hover:bg-navy-2'}`}
+      >
+        Giả lập
+      </button>
 
       <div role="group" aria-label="Vai trò" className="flex rounded-lg bg-navy-2 p-[3px]">
         {ROLES.map((r) => (
