@@ -153,6 +153,8 @@ export function buildApp(opts: FastifyServerOptions = {}, deps?: AppDeps): Fasti
         ...deps.api,
         appSecret: deps.appSecret,
         poster,
+        mailer: a.mailer,
+        publicBaseUrl: a.publicBaseUrl,
         guard: { db: deps.api.db, secureCookie: a.publicBaseUrl.startsWith('https://'), ...(a.session ? { session: a.session } : {}), ...(a.now ? { now: a.now } : {}) },
       });
     }

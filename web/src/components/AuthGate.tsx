@@ -4,13 +4,13 @@ import { setUnauthorizedHandler } from '../api/client';
 import { useMe } from '../api/hooks';
 import { App } from '../App';
 import { SessionProvider } from '../state/session';
-import { AuthFrame, ForgotView, LoginView, ResetView, SignupView, VerifyView, type AuthScreen } from './AuthViews';
+import { AcceptInviteView, AuthFrame, ForgotView, LoginView, ResetView, SignupView, VerifyView, type AuthScreen } from './AuthViews';
 import { ErrorBanner } from './ErrorBanner';
 
 /** Token trong liên kết thư: `/?reset=…` hoặc `/?verify=…`. Chỉ đọc một lần khi tải trang. */
-function readLinkToken(): { kind: 'reset' | 'verify'; token: string } | null {
+function readLinkToken(): { kind: 'reset' | 'verify' | 'invite'; token: string } | null {
   const q = new URLSearchParams(window.location.search);
-  for (const kind of ['reset', 'verify'] as const) {
+  for (const kind of ['reset', 'verify', 'invite'] as const) {
     const t = q.get(kind);
     if (t && /^[A-Za-z0-9_-]{20,100}$/.test(t)) return { kind, token: t };
   }
@@ -39,6 +39,7 @@ export function AuthGate() {
   };
 
   if (link?.kind === 'reset') return <ResetView token={link.token} done={clearLink} />;
+  if (link?.kind === 'invite') return <AcceptInviteView token={link.token} done={clearLink} />;
   if (link?.kind === 'verify') {
     return (
       <VerifyView

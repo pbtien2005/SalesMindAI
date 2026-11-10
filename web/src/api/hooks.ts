@@ -62,7 +62,7 @@ export const useHistory = (id: string | null) =>
 /** Sau mọi thao tác ghi, làm mới toàn bộ dữ liệu đọc (đồng hồ, hộp thư, Trang chủ, hội thoại). */
 function useRefreshAll() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'personas' && q.queryKey[0] !== 'me' && q.queryKey[0] !== 'authConfig' });
+  return () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'personas' && q.queryKey[0] !== 'team' && q.queryKey[0] !== 'me' && q.queryKey[0] !== 'authConfig' });
 }
 
 export function useAdvanceClock() {
@@ -109,3 +109,14 @@ export function usePageMessage() {
   const refresh = useRefreshAll();
   return useMutation({ mutationFn: (v: { conversationId: string; text: string }) => api.pageMessage(v.conversationId, v.text), onSuccess: refresh });
 }
+
+export const useTeam = () => useQuery({ queryKey: ['team'], queryFn: api.team, retry: shouldRetry });
+
+function useTeamMutation<V, R>(fn: (v: V) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: ['team'] }) });
+}
+export const useCreateInvite = () => useTeamMutation((v: { role: string; email?: string }) => api.createInvite(v));
+export const useRevokeInvite = () => useTeamMutation((id: string) => api.revokeInvite(id));
+export const useSetRole = () => useTeamMutation((v: { userId: string; role: string }) => api.setRole(v.userId, v.role));
+export const useRemoveMember = () => useTeamMutation((userId: string) => api.removeMember(userId));

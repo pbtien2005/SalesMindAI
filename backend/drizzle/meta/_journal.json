@@ -36,6 +36,13 @@
       "when": 1794297003824,
       "tag": "0004_complex_professor_monster",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794331846317,
+      "tag": "0005_daily_mauler",
+      "breakpoints": true
     }
   ]
 }

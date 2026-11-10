@@ -435,6 +435,27 @@ export const userTokens = pgTable(
   (t) => [index('user_tokens_user_idx').on(t.userId, t.kind)],
 );
 
+/** Lời mời vào doanh nghiệp. Chỉ lưu BĂM của token; liên kết chỉ hiện đúng một lần lúc tạo.  null nghĩa là ai giữ liên kết cũng nhận được. */
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    email: text('email'),
+    role: memberRole('role').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    invitedBy: uuid('invited_by').references(() => users.id, { onDelete: 'set null' }),
+    acceptedBy: uuid('accepted_by').references(() => users.id, { onDelete: 'set null' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('invitations_tenant_idx').on(t.tenantId)],
+);
+
 /** Nhật ký hành động quan trọng. KHÔNG ghi mật khẩu, token, nội dung tin. */
 export const auditLog = pgTable(
   'audit_log',

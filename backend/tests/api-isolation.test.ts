@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { MemoryMailer } from '../src/auth/mailer.js';
 import { createUser } from '../src/auth/users.js';
+import { createInvite } from '../src/auth/invites.js';
 import { createTokenCrypto } from '../src/crypto/token-crypto.js';
 import { conversations, extractionRuns, messages, pages, proposals, tasks, tenants } from '../src/db/schema.js';
 import { advanceClock } from '../src/demo/clock.js';
@@ -37,6 +38,8 @@ interface Tenant {
   tenantId: string;
   conversationId: string;
   proposalId: string;
+  userId: string;
+  inviteId: string;
   cookie: string;
   name: string;
 }
@@ -44,7 +47,8 @@ interface Tenant {
 async function seedTenant(name: string, email: string): Promise<Tenant> {
   const [t] = await db.insert(tenants).values({ name, aiExtractionEnabled: true }).returning({ id: tenants.id });
   const tenantId = t!.id;
-  await createUser(db, { email, password: PASSWORD, displayName: `Người của ${name}`, tenantId, role: 'sale', emailVerified: true }, new Date());
+  const { userId } = await createUser(db, { email, password: PASSWORD, displayName: `Người của ${name}`, tenantId, role: 'manager', emailVerified: true }, new Date());
+  const inv = await createInvite(db, { tenantId, userId, role: 'manager' }, { role: 'sale' }, new Date());
   const [p] = await db.insert(pages).values({ tenantId, fbPageId: `page-${name}`, name: `Page ${name}`, tokenEnc: 'x' }).returning({ id: pages.id });
   const at = new Date('2026-11-09T01:00:00Z');
   const [c] = await db
@@ -66,7 +70,7 @@ async function seedTenant(name: string, email: string): Promise<Tenant> {
   await db.insert(tasks).values({ tenantId, conversationId: c!.id, title: `Việc của ${name}`, dueAt: new Date('2026-11-01T00:00:00Z') });
   const login = await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { email, password: PASSWORD } });
   const cookie = String(([] as string[]).concat(login.headers['set-cookie'] as string | string[])[0]).split(';')[0]!;
-  return { tenantId, conversationId: c!.id, proposalId: pr!.id, cookie, name };
+  return { tenantId, conversationId: c!.id, proposalId: pr!.id, userId, inviteId: inv.id, cookie, name };
 }
 
 let A: Tenant;
@@ -84,18 +88,24 @@ afterAll(async () => {
   await handle.close();
 });
 
-const as = (t: Tenant, method: 'GET' | 'POST', url: string, body?: unknown) =>
-  app.inject({ method, url, headers: { ...H, cookie: t.cookie }, ...(method === 'POST' ? { payload: (body ?? {}) as object } : {}) });
+type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+const as = (t: Tenant, method: Method, url: string, body?: unknown) => {
+  const hasBody = method === 'POST' || method === 'PATCH';
+  return app.inject({ method, url, headers: { 'x-requested-with': 'salesmind', cookie: t.cookie, ...(hasBody ? { 'content-type': 'application/json' } : {}) }, ...(hasBody ? { payload: (body ?? {}) as object } : {}) });
+};
 
 /** Mỗi route có tham số `:id` phải có một ca: id của tenant B dùng bởi người của A. */
-const CASES: Record<string, (b: Tenant) => { method: 'GET' | 'POST'; url: string; body?: unknown }> = {
+const CASES: Record<string, (b: Tenant) => { method: Method; url: string; body?: unknown }> = {
   'GET /api/conversations/:id': (b) => ({ method: 'GET', url: `/api/conversations/${b.conversationId}` }),
   'GET /api/conversations/:id/history': (b) => ({ method: 'GET', url: `/api/conversations/${b.conversationId}/history` }),
   'POST /api/conversations/:id/stop-followup': (b) => ({ method: 'POST', url: `/api/conversations/${b.conversationId}/stop-followup` }),
+  'POST /api/team/invites/:id/revoke': (b) => ({ method: 'POST', url: `/api/team/invites/${b.inviteId}/revoke` }),
+  'PATCH /api/team/members/:userId': (b) => ({ method: 'PATCH', url: `/api/team/members/${b.userId}`, body: { role: 'sale' } }),
+  'DELETE /api/team/members/:userId': (b) => ({ method: 'DELETE', url: `/api/team/members/${b.userId}` }),
   'POST /api/proposals/:id/decide': (b) => ({ method: 'POST', url: `/api/proposals/${b.proposalId}/decide`, body: { action: 'dismiss' } }),
 };
 
-const TABLES = ['conversations', 'messages', 'proposals', 'profile_fields', 'tasks', 'followup_state', 'extraction_runs', 'users', 'memberships', 'tenants'];
+const TABLES = ['conversations', 'messages', 'proposals', 'profile_fields', 'tasks', 'followup_state', 'extraction_runs', 'users', 'memberships', 'tenants', 'invitations'];
 async function snapshot() {
   const out: Record<string, unknown> = {};
   for (const t of TABLES) out[t] = (await db.execute(sql.raw(`SELECT md5(coalesce(string_agg(x::text, ',' ORDER BY x::text), '')) AS h FROM "${t}" x`))).rows[0];
@@ -124,6 +134,7 @@ describe('cách ly dữ liệu giữa hai doanh nghiệp', () => {
       const own = build(A);
       const ok = await as(A, own.method, own.url, own.body);
       expect([200, 409]).toContain(ok.statusCode);
+      if (key.startsWith('DELETE')) return; // chính chủ tự gỡ mình là owner/manager cuối: không kiểm tiếp
     });
   }
 

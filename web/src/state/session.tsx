@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { Me, Role } from '../api/types';
 
-export type View = 'chat' | 'home';
+export type View = 'chat' | 'home' | 'team';
 
 interface Session {
   /** Người đang đăng nhập (từ `GET /api/auth/me`). */

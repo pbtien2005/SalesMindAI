@@ -11,6 +11,7 @@ import type { Db } from '../db/client.js';
 import { DEMO_USERS } from '../demo/seed.js';
 import { auditLog, users } from '../db/schema.js';
 import { isDemoTenant } from './scope.js';
+import { acceptInvite, inviteInfo, TeamError } from '../auth/invites.js';
 import { apiError, cookieName, makeRequireAuth } from './guard.js';
 
 export interface AuthRouteOptions {
@@ -107,6 +108,28 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts
     const a = req.auth!;
     const demoTenant = opts.demoMode === true && (await isDemoTenant(db, a.tenantId));
     return { user: { id: a.userId, email: a.email, displayName: a.displayName, role: a.role, tenantId: a.tenantId, emailVerified: a.emailVerified, demoTenant } };
+  });
+
+  app.post('/api/auth/invite-info', async (req, reply) => {
+    const b = tokenBody.safeParse(req.body);
+    const info = b.success ? await inviteInfo(db, b.data.token, now()) : null;
+    if (!info) return apiError(reply, 400, 'invalid_token', 'Lời mời không hợp lệ hoặc đã hết hạn.');
+    return info;
+  });
+
+  app.post('/api/auth/accept-invite', async (req, reply) => {
+    const b = z.object({ token: z.string().max(200), displayName: z.string().max(200), password: z.string().max(1000), email: z.string().max(300).optional() }).safeParse(req.body);
+    if (!b.success) return apiError(reply, 422, 'invalid', 'Thiếu thông tin.');
+    try {
+      const { userId } = await acceptInvite(db, b.data, now());
+      const { token, expiresAt } = await createSession(db, userId, { userAgent: String(req.headers['user-agent'] ?? '') }, now(), opts.session);
+      setCookie(reply, token, expiresAt);
+      return reply.code(201).send({ ok: true });
+    } catch (e) {
+      if (e instanceof TeamError) return apiError(reply, 400, e.code, e.message);
+      if (e instanceof AuthError) return apiError(reply, e.code === 'email_taken' ? 409 : 422, e.code, e.message);
+      throw e;
+    }
   });
 
   app.post('/api/auth/verify-email', async (req, reply) => {

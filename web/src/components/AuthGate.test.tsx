@@ -175,3 +175,40 @@ describe('liên kết trong thư', () => {
     expect(f.posts()).toHaveLength(0);
   });
 });
+
+describe('lời mời vào doanh nghiệp', () => {
+  it('?invite=<token>: hiện tên doanh nghiệp, người nhận đặt tên và mật khẩu rồi vào ứng dụng', async () => {
+    const token = 'c'.repeat(43);
+    window.history.replaceState(null, '', `/?invite=${token}`);
+    const user = userEvent.setup();
+    let joined = false;
+    const f = mockFetch(async (url) => {
+      if (url === '/api/auth/invite-info') return json({ tenantName: 'Nội thất ABC', role: 'sale', email: null });
+      if (url === '/api/auth/accept-invite') {
+        joined = true;
+        return json({ ok: true }, 201);
+      }
+      if (url === '/api/auth/me') return joined ? json({ user: hung }) : json({ error: { code: 'unauthenticated', message: 'x' } }, 401);
+      if (url === '/api/home') return json(HOME);
+      if (url === '/api/inbox') return json({ now: NOW, conversations: [] });
+      return json({ error: { code: 'not_found', message: url } }, 404);
+    });
+    renderGate();
+    expect(await screen.findByRole('heading', { name: 'Tham gia Nội thất ABC' })).toBeTruthy();
+    await user.type(screen.getByLabelText('Tên của bạn'), 'Hùng');
+    await user.type(screen.getByLabelText('Email'), 'hung@shop.vn');
+    await user.type(screen.getByLabelText(/Mật khẩu/), 'mat-khau-dai-123');
+    await user.click(screen.getByRole('button', { name: 'Tham gia' }));
+    expect(await screen.findByRole('heading', { name: 'Trang chủ của Hùng' })).toBeTruthy();
+    expect(JSON.parse(f.posts().find((p) => p.url === '/api/auth/accept-invite')!.init.body as string)).toEqual({ token, displayName: 'Hùng', password: 'mat-khau-dai-123', email: 'hung@shop.vn' });
+    expect(window.location.search).toBe('');
+  });
+
+  it('lời mời hết hạn hoặc đã dùng: báo rõ, không có form', async () => {
+    window.history.replaceState(null, '', `/?invite=${'d'.repeat(43)}`);
+    mockFetch(async (url) => (url === '/api/auth/invite-info' ? json({ error: { code: 'invalid_token', message: 'x' } }, 400) : json({ error: { code: 'unauthenticated', message: 'x' } }, 401)));
+    renderGate();
+    expect(await screen.findByRole('heading', { name: 'Lời mời không dùng được' })).toBeTruthy();
+    expect(screen.queryByLabelText('Tên của bạn')).toBeNull();
+  });
+});

@@ -1,5 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import type { InviteInfo } from '../api/types';
 import { useAuthConfig, useDemoLogin, useLogin } from '../api/hooks';
 import { ErrorBanner } from './ErrorBanner';
 
@@ -211,6 +213,55 @@ export function ResetView({ token, done }: { token: string; done: () => void }) 
           </button>
         </form>
       )}
+    </AuthFrame>
+  );
+}
+
+/** Mở từ liên kết mời: `/?invite=<token>`. Người nhận đặt tên và mật khẩu, rồi vào luôn. */
+export function AcceptInviteView({ token, done }: { token: string; done: () => void }) {
+  const qc = useQueryClient();
+  const [info, setInfo] = useState<InviteInfo | null | undefined>(undefined);
+  const [form, setForm] = useState({ displayName: '', password: '', email: '' });
+  const [state, setState] = useState<'idle' | 'sending' | 'error'>('idle');
+  const [error, setError] = useState<unknown>(null);
+  const [started, setStarted] = useState(false);
+  if (!started) {
+    setStarted(true);
+    api.inviteInfo(token).then(setInfo, () => setInfo(null));
+  }
+  const set = (k: keyof typeof form) => (e: ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setState('sending');
+    try {
+      await api.acceptInvite({ token, displayName: form.displayName, password: form.password, ...(info?.email ? {} : { email: form.email.trim() }) });
+      await qc.invalidateQueries({ queryKey: ['me'] });
+      done();
+    } catch (err) {
+      setError(err);
+      setState('error');
+    }
+  };
+
+  if (info === undefined) return <AuthFrame title="Lời mời"><p role="status" className="m-0 text-sm">Đang kiểm tra lời mời…</p></AuthFrame>;
+  if (info === null) {
+    return (
+      <AuthFrame title="Lời mời không dùng được">
+        <p className="mt-0 text-sm">Liên kết đã hết hạn, đã được dùng hoặc đã bị thu hồi. Hãy xin người mời một liên kết mới.</p>
+        <button type="button" className={primary} onClick={done}>Về đăng nhập</button>
+      </AuthFrame>
+    );
+  }
+  return (
+    <AuthFrame title={`Tham gia ${info.tenantName}`}>
+      <form onSubmit={submit}>
+        <Field id="iv-name" name="name" label="Tên của bạn" autoComplete="name" value={form.displayName} onChange={set('displayName')} required autoFocus />
+        {info.email ? <p className="mt-0 text-sm text-ink-3">Email: {info.email}</p> : <Field id="iv-email" name="email" label="Email" type="email" autoComplete="username" value={form.email} onChange={set('email')} required />}
+        <Field id="iv-pass" name="new-password" label="Mật khẩu (ít nhất 10 ký tự)" type="password" autoComplete="new-password" minLength={10} value={form.password} onChange={set('password')} required />
+        <div aria-live="polite">{state === 'error' ? <ErrorBanner error={error} /> : null}</div>
+        <button type="submit" className={`${primary} mt-3`} disabled={state === 'sending'}>{state === 'sending' ? 'Đang tạo…' : 'Tham gia'}</button>
+      </form>
     </AuthFrame>
   );
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { Role } from '../api/types';
 import { useSession, type View } from '../state/session';
 
 const icon = (path: ReactNode) => (
@@ -7,7 +8,7 @@ const icon = (path: ReactNode) => (
   </svg>
 );
 
-const ITEMS: Array<{ view: View; label: string; icon: ReactNode }> = [
+const ITEMS: Array<{ view: View; label: string; icon: ReactNode; roles?: Role[] }> = [
   { view: 'chat', label: 'Hội thoại', icon: icon(<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />) },
   {
     view: 'home',
@@ -19,13 +20,25 @@ const ITEMS: Array<{ view: View; label: string; icon: ReactNode }> = [
       </>,
     ),
   },
+  {
+    view: 'team',
+    label: 'Đội',
+    roles: ['owner', 'manager'],
+    icon: icon(
+      <>
+        <circle cx="9" cy="8" r="3.5" />
+        <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+        <path d="M16 5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5" />
+      </>,
+    ),
+  },
 ];
 
 export function SideNav() {
-  const { view, setView } = useSession();
+  const { view, setView, role } = useSession();
   return (
     <nav aria-label="Điều hướng" className="flex w-16 flex-none flex-col items-center gap-1.5 border-r border-line bg-white pt-3">
-      {ITEMS.map((it) => {
+      {ITEMS.filter((it) => !it.roles || it.roles.includes(role)).map((it) => {
         const active = view === it.view;
         return (
           <button

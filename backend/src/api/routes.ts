@@ -19,6 +19,8 @@ import { loadConversationSummaries, loadHome } from '../followup/overview.js';
 import { apiError as err, makeRequireAuth, type AuthGuardOptions } from './guard.js';
 import { loadConversationDetail, loadHistory } from './read-models.js';
 import { nowFor } from './scope.js';
+import { teamRoutes } from './team.js';
+import type { Mailer } from '../auth/mailer.js';
 
 export interface ApiOptions {
   db: Db;
@@ -30,6 +32,8 @@ export interface ApiOptions {
   /** Bật route demo (đồng hồ tua, giả lập, đặt lại). Chỉ khi DEMO_MODE=true. */
   demoMode: boolean;
   guard: AuthGuardOptions;
+  mailer: Mailer;
+  publicBaseUrl: string;
 }
 
 const uuid = z.string().uuid();
@@ -52,6 +56,7 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
   app.addHook('preHandler', makeRequireAuth(opts.guard));
 
   const nowOf = (tenantId: string) => nowFor(db, tenantId, opts.demoMode);
+  await app.register(teamRoutes, { db, mailer: opts.mailer, publicBaseUrl: opts.publicBaseUrl, now: opts.guard.now ?? (() => new Date()) });
 
   app.get('/api/now', async (req) => ({ now: await nowOf(req.auth!.tenantId), role: req.auth!.role, roleName: req.auth!.displayName }));
 

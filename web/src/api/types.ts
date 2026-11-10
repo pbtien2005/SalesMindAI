@@ -173,3 +173,28 @@ export interface Persona {
 }
 
 export const NEEDS_CLARIFICATION = 'needs_clarification';
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  displayName: string;
+  role: Role;
+  createdAt: string;
+}
+export interface TeamInvite {
+  id: string;
+  email: string | null;
+  role: Role;
+  expiresAt: string;
+}
+export interface TeamData {
+  members: TeamMember[];
+  invites: TeamInvite[];
+  /** ID của người đang xem. */
+  me: string;
+}
+export interface InviteInfo {
+  tenantName: string;
+  role: Role;
+  email: string | null;
+}
