@@ -194,3 +194,18 @@ Thiết kế gốc: artifact "SalesMind AI - Phác thảo giao diện" (2 màn: 
 | 5 | Pháp lý: gửi chat khách sang API nước ngoài (Luật 91/2025/QH15, Nghị định 356/2025/NĐ-CP) | **chưa xác minh** | Ghi chú nghiên cứu chỉ đọc bản tóm tắt thứ cấp; cần luật sư đọc văn bản gốc. **Điều kiện chặn** trước khi `ai:enable` cho khách thật |
 | 6 | `libphonenumber-js` có phủ mọi đầu số di động sau 2018 không | **chưa xác minh** (mốc 3) | Kiểm tra bằng bảng test ca |
 | 7 | Dữ liệu đơn vị hành chính sau sáp nhập 2025 (giấy phép bộ dữ liệu `thanglequoc/vietnamese-provinces-database` chưa kiểm tra) | **chưa xác minh** | Module 2 không chuẩn hóa địa chỉ; chỉ lưu địa chỉ thô kèm câu gốc |
+
+
+---
+
+# PROGRESS — Nền tảng nhiều người dùng (kế hoạch: [doc/PLAN-san-pham.md](doc/PLAN-san-pham.md))
+
+Đã duyệt: đăng nhập email và mật khẩu; chạy máy cá nhân qua tunnel (P9b hoãn); nền tảng trước, đơn và bill sau. Kế hoạch phần G (đơn, bill): [doc/PLAN-demo-full.md](doc/PLAN-demo-full.md).
+
+| Mốc | Nội dung | Trạng thái | Ngày | Bằng chứng |
+|---|---|---|---|---|
+| P1 | Tài khoản: người dùng, phiên, đăng nhập, đặt lại mật khẩu | xong | 2026-11-10 | Migration `0004` (`users`, `memberships`, `sessions`, `user_tokens`, `audit_log`). `src/auth/{password,session,users,mailer}.ts`, `src/api/{guard,auth-routes}.ts`, CLI `user:create`, `user:reset-password` (mật khẩu qua stdin). `npm run typecheck` sạch; `npm test` **581/581 đạt** (32 file; thêm 52 test: password 10, session 15, routes 21...). Các điểm Review Focus: email lạ và mật khẩu sai trả cùng mã và cùng body; sai 5 lần khóa 15 phút (kể cả lần đúng trong lúc khóa vẫn 401 y hệt); đặt lại mật khẩu thu hồi mọi phiên, token dùng một lần (4 lần dùng đồng thời chỉ một thắng); token phiên và token đặt lại không nằm trong DB (chỉ băm); hết hạn nhàn rỗi 7 ngày và tuyệt đối 30 ngày tại đúng biên. **Chạy thật** (server riêng cổng 3999, DB dev, curl): đăng nhập sai 401, đúng 200 với cookie `__Host-sm_session; HttpOnly; Secure; SameSite=Lax`, `me` đúng, đăng xuất rồi `me` 401, thiếu `x-requested-with` 403. **Chưa làm / đã biết:** (1) chưa có `SmtpMailer`: dev dùng `ConsoleMailer` (in liên kết ra log), production dùng `UnavailableMailer` (báo lỗi rõ), nên quên mật khẩu ở production phải dùng CLI cho tới khi cấu hình SMTP; (2) chống CSRF mới áp cho `/api/auth/*`, P2 mở ra mọi `/api/*` khi API demo chuyển sang xác thực bằng phiên (hiện API demo vẫn không đăng nhập); (3) `normalizeEmail` trả `null` khi sai (không ném), khác mô tả trong kế hoạch; (4) không dùng thử `code-review` skill cho mốc này, tự rà các điểm bảo mật nêu trên. |
+| P2 | `/api/*` theo tenant của phiên, vai trò, cách ly dữ liệu | chưa làm | | |
+| P3 | Giao diện đăng nhập, phục vụ `web/dist` từ backend | chưa làm | | |
+| P4 | Mời thành viên, vai trò, gỡ thành viên | chưa làm | | |
+| P5 | Kết nối nhiều Page trong giao diện (cần K0) | chưa làm | | |

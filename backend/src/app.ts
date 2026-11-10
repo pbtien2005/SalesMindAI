@@ -5,6 +5,9 @@ import Fastify, {
   type FastifyRequest,
   type FastifyServerOptions,
 } from 'fastify';
+import cookie from '@fastify/cookie';
+import { authRoutes, type AuthRouteOptions } from './api/auth-routes.js';
+import { registerCsrfGuard } from './api/guard.js';
 import { apiRoutes, type ApiOptions } from './api/routes.js';
 import { oauthRoutes, type OAuthRouteOptions } from './auth/oauth-routes.js';
 import type { WebhookPoster } from './demo/simulator.js';
@@ -27,6 +30,8 @@ export interface AppDeps {
    * `appSecret` dùng chung với webhook để ký tin giả lập.
    */
   api?: Pick<ApiOptions, 'db' | 'crypto' | 'log'>;
+  /** Có thì bật tài khoản: `/api/auth/*`, cookie phiên và chống CSRF cho mọi `/api/*`. */
+  auth?: AuthRouteOptions;
 }
 
 /**
@@ -121,6 +126,12 @@ export function buildApp(opts: FastifyServerOptions = {}, deps?: AppDeps): Fasti
       ...(deps.enqueueTimeoutMs ? { enqueueTimeoutMs: deps.enqueueTimeoutMs } : {}),
     });
     if (deps.oauth) void app.register(oauthRoutes, deps.oauth);
+    if (deps.auth) {
+      void app.register(cookie);
+      // P1: chỉ /api/auth/*. P2 mở rộng ra mọi /api/* khi API demo chuyển sang xác thực bằng phiên.
+      registerCsrfGuard(app, '/api/auth/');
+      void app.register(authRoutes, deps.auth);
+    }
     if (deps.api) {
       // Tin giả lập đi vào đúng POST /webhook của chính server này (có ký chữ ký, qua hàng đợi và worker).
       const poster: WebhookPoster = {

@@ -364,6 +364,92 @@ export const demoClock = pgTable('demo_clock', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const userStatus = pgEnum('user_status', ['active', 'disabled']);
+/** `owner`: toàn quyền; `manager`: kết nối Page, mời thành viên, Trang chủ quản lý; `sale`: Hộp thư, duyệt, gửi tin. */
+export const memberRole = pgEnum('member_role', ['owner', 'manager', 'sale']);
+export const userTokenKind = pgEnum('user_token_kind', ['email_verify', 'password_reset']);
+
+/** Tài khoản đăng nhập. `email` đã chuẩn hóa (chữ thường, NFC). */
+export const users = pgTable('users', {
+  id: id(),
+  email: text('email').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  displayName: text('display_name').notNull(),
+  status: userStatus('status').notNull().default('active'),
+  emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
+  /** Số lần đăng nhập sai liên tiếp; đủ 5 thì khóa tạm (`lockedUntil`) và về 0. */
+  failedLogins: integer('failed_logins').notNull().default(0),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+/** Mỗi người dùng thuộc đúng một doanh nghiệp (UNIQUE user_id); bảng cho phép nới sau. */
+export const memberships = pgTable(
+  'memberships',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    role: memberRole('role').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('memberships_tenant_idx').on(t.tenantId)],
+);
+
+/** Phiên đăng nhập. Chỉ lưu BĂM SHA-256 của token (cookie giữ token gốc). */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(),
+    createdAt: createdAt(),
+    /** Hết hạn tuyệt đối. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull(),
+    userAgent: text('user_agent'),
+  },
+  (t) => [index('sessions_user_idx').on(t.userId)],
+);
+
+/** Token dùng một lần: xác minh email, đặt lại mật khẩu. Chỉ lưu băm. */
+export const userTokens = pgTable(
+  'user_tokens',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: userTokenKind('kind').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('user_tokens_user_idx').on(t.userId, t.kind)],
+);
+
+/** Nhật ký hành động quan trọng. KHÔNG ghi mật khẩu, token, nội dung tin. */
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id'),
+    userId: uuid('user_id'),
+    action: text('action').notNull(),
+    target: text('target'),
+    meta: jsonb('meta'),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('audit_log_tenant_idx').on(t.tenantId, t.at)],
+);
+
 export type Tenant = typeof tenants.$inferSelect;
 export type ExtractionRun = typeof extractionRuns.$inferSelect;
 export type Proposal = typeof proposals.$inferSelect;
@@ -373,3 +459,5 @@ export type Page = typeof pages.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type PagePolicyEvent = typeof pagePolicyEvents.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type MemberRole = (typeof memberRole.enumValues)[number];

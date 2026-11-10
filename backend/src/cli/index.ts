@@ -44,6 +44,9 @@ const USAGE = `Dùng: npm run cli -- <lệnh>
   ai:disable <tenantId>       Tắt AI trích xuất cho tenant
   extract:run <conversationId>  Chạy trích xuất cho một hội thoại ngay (đồng bộ, theo AI_MODE hiện hành)
   extract:status              Số lần trích xuất theo trạng thái và lý do lỗi
+  user:create <email> <tên> --tenant <id> --role <owner|manager|sale>
+                              Tạo tài khoản đăng nhập (mật khẩu đọc từ stdin hoặc nhập khi được hỏi qua --password-stdin)
+  user:reset-password <email> Đặt mật khẩu mới (đọc từ stdin), thu hồi mọi phiên của người đó
   demo:reset                  (DEMO_MODE) Dựng lại dữ liệu demo và đặt đồng hồ về Thứ Năm 12/11/2026 09:00
   demo:send <persona> <nội dung> [--page]
                               (DEMO_MODE) Gửi tin giả có ký tên vào server đang chạy (persona: minh, thu, duc, ngoc, mai).
@@ -58,6 +61,16 @@ tiết 20 tin gần nhất của mỗi hội thoại nên đây không phải l�
 
 Liên kết kết nối dùng được MỘT lần và hết hạn sau 10 phút. Gửi cho người quản lý Page,
 họ mở bằng trình duyệt và đăng nhập Facebook để cấp quyền.`;
+
+/** Đọc một dòng từ stdin (mật khẩu không đi qua tham số dòng lệnh để khỏi lọt vào lịch sử shell). */
+async function readStdinLine(): Promise<string> {
+  if (process.stdin.isTTY) throw new Error('Đưa mật khẩu qua stdin, ví dụ: echo "mật-khẩu" | npm run cli -- user:create ...');
+  let data = '';
+  for await (const chunk of process.stdin) data += chunk;
+  const line = data.split(/\r?\n/)[0] ?? '';
+  if (!line) throw new Error('Không đọc được mật khẩu từ stdin.');
+  return line;
+}
 
 async function main(): Promise<number> {
   const [command, ...args] = process.argv.slice(2);
@@ -83,6 +96,29 @@ async function main(): Promise<number> {
         if (!id) throw new Error('Thiếu ID tenant.');
         if (!(await tenantExists(db, id))) throw new Error(`Không có tenant ${id}.`);
         console.log(await newConnectUrl(db, env.PUBLIC_BASE_URL, id));
+        return 0;
+      }
+      case 'user:create': {
+        const { parseArgs } = await import('node:util');
+        const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { tenant: { type: 'string' }, role: { type: 'string' } }, strict: true });
+        const [email, ...nameParts] = positionals;
+        if (!email || nameParts.length === 0) throw new Error('Cú pháp: user:create <email> <tên> --tenant <id> --role <owner|manager|sale>');
+        if (!values.tenant || !(await tenantExists(db, values.tenant))) throw new Error('Thiếu hoặc sai --tenant.');
+        if (!values.role || !['owner', 'manager', 'sale'].includes(values.role)) throw new Error('--role phải là owner, manager hoặc sale.');
+        const password = await readStdinLine();
+        const { createUser } = await import('../auth/users.js');
+        const { userId } = await createUser(db, { email, password, displayName: nameParts.join(' '), tenantId: values.tenant, role: values.role as 'owner' | 'manager' | 'sale', emailVerified: true }, new Date());
+        console.log(`Đã tạo tài khoản ${email} (${userId}), vai trò ${values.role}.`);
+        return 0;
+      }
+      case 'user:reset-password': {
+        const email = args[0];
+        if (!email) throw new Error('Thiếu email.');
+        const { findUserByEmail, setPassword } = await import('../auth/users.js');
+        const u = await findUserByEmail(db, email);
+        if (!u) throw new Error('Không có người dùng này.');
+        await setPassword(db, u.id, await readStdinLine());
+        console.log('Đã đặt mật khẩu mới và thu hồi mọi phiên.');
         return 0;
       }
       case 'tenant:list': {

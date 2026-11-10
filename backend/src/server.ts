@@ -1,3 +1,4 @@
+import { ConsoleMailer, UnavailableMailer } from './auth/mailer.js';
 import { buildApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import { createTokenCrypto } from './crypto/token-crypto.js';
@@ -53,6 +54,13 @@ const app = buildApp(
       graph,
       crypto,
       publicBaseUrl: env.PUBLIC_BASE_URL,
+    },
+    auth: {
+      db: dbHandle.db,
+      mailer: env.NODE_ENV === 'production' ? new UnavailableMailer() : new ConsoleMailer((m) => app.log.info(m)),
+      signupOpen: env.SIGNUP_MODE === 'open',
+      publicBaseUrl: env.PUBLIC_BASE_URL,
+      session: { idleDays: env.SESSION_IDLE_DAYS, maxDays: env.SESSION_MAX_DAYS },
     },
     // API demo chỉ tồn tại khi DEMO_MODE=true (không có đăng nhập).
     ...(env.DEMO_MODE ? { api: { db: dbHandle.db, crypto, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } } } : {}),

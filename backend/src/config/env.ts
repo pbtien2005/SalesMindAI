@@ -86,6 +86,12 @@ const envSchema = z.object({
   /** Số tin gần nhất (cả hai chiều) đưa cho AI đọc. */
   AI_CONTEXT_MESSAGES: z.coerce.number().int().min(1).max(200).default(30),
 
+  /** Đăng ký tự do (`open`) hay chỉ tạo tài khoản bằng CLI và lời mời (`closed`, mặc định). */
+  SIGNUP_MODE: z.enum(['open', 'closed']).default('closed'),
+  /** Phiên hết hạn sau bấy nhiêu ngày không dùng, và tối đa bấy nhiêu ngày kể từ lúc đăng nhập. */
+  SESSION_IDLE_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+  SESSION_MAX_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+
   /**
    * Bật API demo (`/api/*`), đồng hồ tua được và công cụ giả lập. KHÔNG có đăng nhập: chỉ để chạy demo trên máy
    * của bạn. Bị từ chối khi NODE_ENV=production.
