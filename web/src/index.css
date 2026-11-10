@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+
+/* Token màu lấy từ bản phác thảo (artifact "SalesMind AI - Phác thảo giao diện"). */
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --color-canvas: #eef1f5;
+  --color-line: #dde3ea;
+  --color-line-strong: #cbd3dd;
+  --color-ink: #1b2430;
+  --color-ink-2: #3b4452;
+  --color-ink-3: #4b5565;
+  --color-navy: #0f1b2d;
+  --color-navy-2: #1c2b44;
+  --color-navy-line: #3a4d6b;
+  --color-navy-text: #b7c3d4;
+  --color-brand: #1d4ed8;
+  --color-brand-soft: #e3ecff;
+  --color-p1: #b42318;
+  --color-p1-soft: #fdddd9;
+  --color-p1-bg: #fef3f2;
+  --color-amber: #d97706;
+  --color-amber-ink: #6b3f00;
+  --color-amber-soft: #ffebc2;
+  --color-ok: #146c43;
+  --color-chip: #e7ebf1;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--color-ink);
+  background: var(--color-canvas);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
