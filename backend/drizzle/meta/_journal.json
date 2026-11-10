@@ -64,6 +64,13 @@
       "when": 1794334563103,
       "tag": "0008_swift_skrulls",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794335160896,
+      "tag": "0009_marvelous_paladin",
+      "breakpoints": true
     }
   ]
 }

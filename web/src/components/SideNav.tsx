@@ -27,6 +27,12 @@ const ITEMS: Array<{ view: View; label: string; icon: ReactNode; roles?: Role[] 
     icon: icon(<path d="M4 4h16v12H8l-4 4V4z" />),
   },
   {
+    view: 'ai',
+    label: 'AI',
+    roles: ['owner', 'manager'],
+    icon: icon(<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" />),
+  },
+  {
     view: 'team',
     label: 'Đội',
     roles: ['owner', 'manager'],

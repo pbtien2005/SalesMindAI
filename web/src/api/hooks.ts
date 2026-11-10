@@ -90,7 +90,7 @@ export const useHistory = (id: string | null) =>
 /** Sau mọi thao tác ghi, làm mới toàn bộ dữ liệu đọc (đồng hồ, hộp thư, Trang chủ, hội thoại). */
 function useRefreshAll() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'personas' && q.queryKey[0] !== 'team' && q.queryKey[0] !== 'pages' && q.queryKey[0] !== 'me' && q.queryKey[0] !== 'authConfig' });
+  return () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'personas' && q.queryKey[0] !== 'team' && q.queryKey[0] !== 'ai' && q.queryKey[0] !== 'pages' && q.queryKey[0] !== 'me' && q.queryKey[0] !== 'authConfig' });
 }
 
 export function useAdvanceClock() {
@@ -173,3 +173,11 @@ export function useSendMessage() {
     },
   });
 }
+
+export const useAi = () => useQuery({ queryKey: ['ai'], queryFn: api.ai, retry: shouldRetry, refetchInterval: 10_000 });
+function useAiMutation(fn: () => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: ['ai'] }) });
+}
+export const useEnableAi = () => useAiMutation(() => api.enableAi());
+export const useDisableAi = () => useAiMutation(() => api.disableAi());

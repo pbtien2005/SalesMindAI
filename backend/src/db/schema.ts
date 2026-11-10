@@ -53,6 +53,11 @@ export const tenants = pgTable('tenants', {
   /** AI trích xuất bật theo từng tenant, mặc định TẮT (xem CLAUDE.md: kiểm tra pháp lý trước khi bật cho khách thật). */
   aiExtractionEnabled: boolean('ai_extraction_enabled').notNull().default(false),
   aiEnabledAt: timestamp('ai_enabled_at', { withTimezone: true }),
+  /** Chủ doanh nghiệp đã xác nhận pháp lý khi bật AI (ai, lúc nào). */
+  aiConsentAt: timestamp('ai_consent_at', { withTimezone: true }),
+  aiConsentBy: uuid('ai_consent_by'),
+  /** Hạn mức lời gọi AI mỗi ngày (giờ Việt Nam); null = dùng mặc định của máy chủ (AI_DAILY_CAP). */
+  aiDailyCap: integer('ai_daily_cap'),
   createdAt: createdAt(),
 });
 
@@ -476,6 +481,21 @@ export const auditLog = pgTable(
     at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('audit_log_tenant_idx').on(t.tenantId, t.at)],
+);
+
+/** Số lời gọi và token AI mỗi doanh nghiệp mỗi ngày (giờ Việt Nam). */
+export const aiUsage = pgTable(
+  'ai_usage',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    day: text('day').notNull(),
+    calls: integer('calls').notNull().default(0),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.day] })],
 );
 
 export type Tenant = typeof tenants.$inferSelect;

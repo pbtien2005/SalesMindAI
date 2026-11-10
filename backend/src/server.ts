@@ -67,7 +67,7 @@ const app = buildApp(
       session: { idleDays: env.SESSION_IDLE_DAYS, maxDays: env.SESSION_MAX_DAYS },
     },
     // API demo chỉ tồn tại khi DEMO_MODE=true (không có đăng nhập).
-    api: { db: dbHandle.db, crypto, demoMode: env.DEMO_MODE, sender: new GraphMessageSender({ db: dbHandle.db, crypto, graph, ownAppId: env.FB_APP_ID }), facebook: { facebookConfigured: !/^changeme/i.test(env.FB_APP_ID) && !/^changeme/i.test(env.APP_SECRET), graph, backfill: createBackfillQueue(boss) }, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } },
+    api: { db: dbHandle.db, crypto, demoMode: env.DEMO_MODE, ai: { mode: env.AI_MODE, defaultCap: env.AI_DAILY_CAP }, sender: new GraphMessageSender({ db: dbHandle.db, crypto, graph, ownAppId: env.FB_APP_ID }), facebook: { facebookConfigured: !/^changeme/i.test(env.FB_APP_ID) && !/^changeme/i.test(env.APP_SECRET), graph, backfill: createBackfillQueue(boss) }, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } },
   },
 );
 
@@ -131,7 +131,7 @@ await startWebhookWorker(boss, async (data) => {
 });
 
 await startExtractWorker(boss, async ({ conversationId }) => {
-  await runExtraction({ db: dbHandle.db, extractor, log: app.log, contextMessages: env.AI_CONTEXT_MESSAGES }, conversationId);
+  await runExtraction({ db: dbHandle.db, extractor, log: app.log, contextMessages: env.AI_CONTEXT_MESSAGES, ...(env.AI_MODE === 'live' ? { budget: { defaultCap: env.AI_DAILY_CAP } } : {}) }, conversationId);
 });
 stopSweeper = startSweeper({ db: dbHandle.db, queue: extractQueue, log: app.log, delaySeconds: env.AI_DEBOUNCE_SECONDS });
 

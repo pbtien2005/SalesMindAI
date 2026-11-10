@@ -21,6 +21,7 @@ import { apiError as err, makeRequireAuth, type AuthGuardOptions } from './guard
 import { loadConversationDetail, loadHistory } from './read-models.js';
 import { nowFor } from './scope.js';
 import { teamRoutes } from './team.js';
+import { aiRoutes } from './ai.js';
 import { SendError, type MessageSender } from '../send/sender.js';
 import { isDemoTenant } from './scope.js';
 import { pageRoutes, type PageRouteOptions } from './pages.js';
@@ -40,6 +41,8 @@ export interface ApiOptions {
   publicBaseUrl: string;
   /** Gửi tin thật qua Send API (không có thì route gửi trả 503). */
   sender?: MessageSender;
+  /** Chế độ AI và hạn mức mặc định (hiển thị ở màn AI). */
+  ai?: { mode: 'offline' | 'live'; defaultCap: number };
   /** Kết nối Page Facebook (chưa cấu hình thì các route kết nối trả 503). */
   facebook?: Pick<PageRouteOptions, 'facebookConfigured' | 'graph' | 'backfill'>;
 }
@@ -65,6 +68,7 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
 
   const nowOf = (tenantId: string) => nowFor(db, tenantId, opts.demoMode);
   await app.register(pageRoutes, { db, crypto: opts.crypto, publicBaseUrl: opts.publicBaseUrl, facebookConfigured: opts.facebook?.facebookConfigured ?? false, ...(opts.facebook?.graph ? { graph: opts.facebook.graph } : {}), ...(opts.facebook?.backfill ? { backfill: opts.facebook.backfill } : {}) });
+  await app.register(aiRoutes, { db, mode: opts.ai?.mode ?? 'offline', defaultCap: opts.ai?.defaultCap ?? 500, now: opts.guard.now ?? (() => new Date()) });
   await app.register(teamRoutes, { db, mailer: opts.mailer, publicBaseUrl: opts.publicBaseUrl, now: opts.guard.now ?? (() => new Date()) });
 
   app.get('/api/now', async (req) => ({ now: await nowOf(req.auth!.tenantId), role: req.auth!.role, roleName: req.auth!.displayName }));

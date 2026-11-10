@@ -12,6 +12,7 @@
 import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { conversations, extractionRuns, messages, profileFields, proposals, tenants } from '../db/schema.js';
+import { checkAndReserve, recordUsage, releaseReservation, tenantCap } from '../ai/budget.js';
 import { findPhones } from './phone.js';
 import { PROMPT_VERSION } from './prompt.js';
 import { classifyTime, needsClarification } from './time-expr.js';
@@ -40,10 +41,12 @@ export interface RunDeps {
   log: RunLogger;
   /** Số tin gần nhất (cả hai chiều) đưa cho AI đọc. */
   contextMessages: number;
+  /** Có thì mỗi lời gọi mô hình bị giới hạn theo hạn mức ngày của doanh nghiệp (xem `ai/budget.ts`). */
+  budget?: { defaultCap: number; now?: () => Date };
 }
 
 export type RunResult =
-  | { status: 'skipped'; reason: 'conversation_missing' | 'ai_disabled' | 'no_customer_message' | 'before_enabled' | 'already_done' }
+  | { status: 'skipped'; reason: 'conversation_missing' | 'budget_exhausted' | 'ai_disabled' | 'no_customer_message' | 'before_enabled' | 'already_done' }
   | { status: 'succeeded' | 'failed'; proposed: number; rejected: number; failureReason?: string };
 
 const MAX_VALUE_LENGTH = 200;
@@ -155,8 +158,25 @@ export async function runExtraction(deps: RunDeps, conversationId: string): Prom
     .where(and(eq(extractionRuns.conversationId, conversationId), eq(extractionRuns.upToMessageId, latest.id), eq(extractionRuns.promptVersion, PROMPT_VERSION)));
   if (done) return { status: 'skipped', reason: 'already_done' };
 
+  // Hạn mức theo doanh nghiệp: hết thì bỏ qua (KHÔNG ghi run, KHÔNG retry); sweeper sẽ bù khi sang ngày mới.
+  const clock = deps.budget?.now ?? (() => new Date());
+  if (deps.budget) {
+    const cap = await tenantCap(db, conv.tenantId, deps.budget.defaultCap);
+    if (!(await checkAndReserve(db, conv.tenantId, clock(), cap)).allowed) {
+      log.warn({ extraction: { conversationId, skipped: 'budget_exhausted' } }, 'hết hạn mức AI trong ngày của doanh nghiệp');
+      return { status: 'skipped', reason: 'budget_exhausted' };
+    }
+  }
+
   // Lỗi tạm thời được NÉM ở đây (không ghi run) để hàng đợi retry rồi vào dead-letter.
-  const outcome = await extractor.extract({ messages: ctx });
+  let outcome;
+  try {
+    outcome = await extractor.extract({ messages: ctx });
+  } catch (e) {
+    if (deps.budget) await releaseReservation(db, conv.tenantId, clock()); // chưa tốn gì: trả lại lượt
+    throw e;
+  }
+  if (deps.budget) await recordUsage(db, conv.tenantId, outcome.usage ?? ZERO_USAGE, clock());
 
   const customerById = new Map(customerMsgs.map((m) => [m.id, m]));
   const built: Built[] = [];

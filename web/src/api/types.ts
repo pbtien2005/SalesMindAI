@@ -219,3 +219,12 @@ export interface PagesData {
   /** Máy chủ đã có FB_APP_ID và APP_SECRET thật. */
   facebookConfigured: boolean;
 }
+
+export interface AiStatus {
+  enabled: boolean;
+  mode: 'offline' | 'live';
+  consentAt: string | null;
+  /** Hạn mức lời gọi mỗi ngày (chỉ ở chế độ live). */
+  cap: number | null;
+  today: { calls: number; inputTokens: number; outputTokens: number };
+}
