@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { api, ApiError } from './client';
 import type { ConversationSummary, DecideBody } from './types';
 
@@ -156,3 +157,19 @@ function usePagesMutation<V, R>(fn: (v: V) => Promise<R>) {
 }
 export const useDisconnectPage = () => usePagesMutation((id: string) => api.disconnectPage(id));
 export const useBackfillPage = () => usePagesMutation((id: string) => api.backfillPage(id));
+
+/** Gửi tin thật cho khách. Mỗi lần bấm một khóa chống gửi trùng (giữ nguyên khi tự thử lại, đổi sau khi thành công). */
+export function useSendMessage() {
+  const refresh = useRefreshAll();
+  const keyRef = useRef<string | null>(null);
+  return useMutation({
+    mutationFn: (v: { conversationId: string; text: string }) => {
+      keyRef.current ??= crypto.randomUUID().replaceAll('-', '');
+      return api.send(v.conversationId, v.text, keyRef.current);
+    },
+    onSuccess: () => {
+      keyRef.current = null;
+      return refresh();
+    },
+  });
+}

@@ -103,6 +103,7 @@ const CASES: Record<string, (b: Tenant) => { method: Method; url: string; body?:
   'POST /api/team/invites/:id/revoke': (b) => ({ method: 'POST', url: `/api/team/invites/${b.inviteId}/revoke` }),
   'PATCH /api/team/members/:userId': (b) => ({ method: 'PATCH', url: `/api/team/members/${b.userId}`, body: { role: 'sale' } }),
   'DELETE /api/team/members/:userId': (b) => ({ method: 'DELETE', url: `/api/team/members/${b.userId}` }),
+  'POST /api/conversations/:id/send': (b) => ({ method: 'POST', url: `/api/conversations/${b.conversationId}/send`, body: { text: 'xin chào' } }),
   'POST /api/pages/:id/disconnect': (b) => ({ method: 'POST', url: `/api/pages/${b.pageId}/disconnect` }),
   'POST /api/pages/:id/backfill': (b) => ({ method: 'POST', url: `/api/pages/${b.pageId}/backfill` }),
   'POST /api/proposals/:id/decide': (b) => ({ method: 'POST', url: `/api/proposals/${b.proposalId}/decide`, body: { action: 'dismiss' } }),

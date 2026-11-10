@@ -21,6 +21,8 @@ import { apiError as err, makeRequireAuth, type AuthGuardOptions } from './guard
 import { loadConversationDetail, loadHistory } from './read-models.js';
 import { nowFor } from './scope.js';
 import { teamRoutes } from './team.js';
+import { SendError, type MessageSender } from '../send/sender.js';
+import { isDemoTenant } from './scope.js';
 import { pageRoutes, type PageRouteOptions } from './pages.js';
 import type { Mailer } from '../auth/mailer.js';
 
@@ -36,6 +38,8 @@ export interface ApiOptions {
   guard: AuthGuardOptions;
   mailer: Mailer;
   publicBaseUrl: string;
+  /** Gửi tin thật qua Send API (không có thì route gửi trả 503). */
+  sender?: MessageSender;
   /** Kết nối Page Facebook (chưa cấu hình thì các route kết nối trả 503). */
   facebook?: Pick<PageRouteOptions, 'facebookConfigured' | 'graph' | 'backfill'>;
 }
@@ -136,6 +140,42 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
       return { stopped: true };
     } catch (e) {
       if (e instanceof FollowupError) return err(reply, 409, e.code, e.message);
+      throw e;
+    }
+  });
+
+  // ---- Gửi tin cho khách: chỉ khi người dùng bấm. Tenant demo chỉ ghi giả lập; tenant thật gửi qua Send API. ----
+  const sendBody = z.object({ text: z.string().max(5000) });
+  const recent = new Map<string, { at: number; result: { messageId: string; sentAt: Date } }>();
+  const SEND_STATUS: Record<string, number> = { not_found: 404, page_inactive: 409, window_closed: 422, token_invalid: 409, rate_limited: 429, user_unavailable: 422, meta_error: 502, network: 502, invalid: 422 };
+  app.post<{ Params: { id: string } }>('/api/conversations/:id/send', async (req, reply) => {
+    const a = req.auth!;
+    if (!uuid.safeParse(req.params.id).success || !(await conversationTimes(db, a.tenantId, req.params.id))) return err(reply, 404, 'not_found', 'Không có hội thoại này.');
+    const b = sendBody.safeParse(req.body);
+    if (!b.success) return err(reply, 422, 'invalid', 'Thiếu nội dung tin nhắn.');
+    const now = await nowOf(a.tenantId);
+    // Khóa chống gửi trùng khi client thử lại cùng một lần bấm.
+    const idem = req.headers['idempotency-key'];
+    const key = typeof idem === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(idem) ? `${a.userId}:${req.params.id}:${idem}` : null;
+    if (key) {
+      for (const [k, v] of recent) if (Date.now() - v.at > 120_000) recent.delete(k);
+      const hit = recent.get(key);
+      if (hit) return { ok: true, ...hit.result, repeated: true };
+    }
+    try {
+      if (opts.demoMode && (await isDemoTenant(db, a.tenantId))) {
+        const ctx = await getDemoContext(db);
+        if (!ctx) return err(reply, 409, 'no_demo_data', 'Chưa có dữ liệu demo.');
+        await simulatePageMessage({ db, poster: opts.poster, appSecret: opts.appSecret, ctx }, req.params.id, b.data.text, now);
+        return { ok: true, messageId: 'demo', sentAt: now, demo: true };
+      }
+      if (!opts.sender) return err(reply, 503, 'sender_unavailable', 'Chưa cấu hình gửi tin.');
+      const result = await opts.sender.send({ tenantId: a.tenantId, conversationId: req.params.id, text: b.data.text, byUserId: a.userId }, now);
+      if (key) recent.set(key, { at: Date.now(), result });
+      return { ok: true, ...result };
+    } catch (e) {
+      if (e instanceof SendError) return err(reply, SEND_STATUS[e.code] ?? 502, e.code, e.message);
+      if (e instanceof SimError) return err(reply, 422, 'invalid', e.message);
       throw e;
     }
   });

@@ -134,6 +134,8 @@ export type BoxItem =
 
 export interface ConversationDetail {
   summary: ConversationSummary;
+  /** Có gửi tin được cho khách này không (cửa sổ 24 giờ và trạng thái Page). */
+  reply: { open: boolean; closesAt: string | null; pageActive: boolean };
   messages: MessageView[];
   approved: ApprovedView[];
   autoFill: ProposalView[];

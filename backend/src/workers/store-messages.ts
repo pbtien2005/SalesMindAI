@@ -86,6 +86,9 @@ const toDate = (ms: number | null) => (ms === null ? null : new Date(ms));
  * `last_message_at` (mọi tin), `last_user_interaction_at` (chỉ hành động của khách), `last_page_message_at`
  * (chỉ tin của Page). Tin của Page KHÔNG làm mới `last_user_interaction_at`.
  */
+/** Echo của tin SalesMind vừa gửi được coi là trùng nếu cách tin 'send' không quá ngần này. */
+const SEND_ECHO_WINDOW_MS = 5000;
+
 export async function storeInbound(
   tx: Tx,
   items: StoreItem[],
@@ -188,6 +191,29 @@ export async function storeInbound(
       if (match) result.heuristicSkipped += 1;
       return !match;
     });
+  }
+
+  // 2b) Echo của tin do SalesMind vừa gửi (source = send): nếu Meta gắn mid khác message_id của Send API thì echo
+  // sẽ lưu trùng. Bỏ echo khớp một tin 'send' cùng hội thoại, cùng nội dung, trong vài giây. (Điểm chưa xác minh với Meta thật.)
+  if (source === 'webhook') {
+    const echoes = toInsert.filter(({ m }) => m.direction === 'outbound' && m.text !== null);
+    if (echoes.length > 0) {
+      const cids = [...new Set(echoes.map(({ m, page }) => convIdByKey.get(convKey(page.id, m.psid))!))];
+      const ts = echoes.map((i) => i.m.sentAtMs);
+      const sent = await tx
+        .select({ conversationId: messages.conversationId, mid: messages.mid, sentAt: messages.sentAt, text: messages.text })
+        .from(messages)
+        .where(and(inArray(messages.conversationId, cids), eq(messages.source, 'send'), between(messages.sentAt, new Date(Math.min(...ts) - SEND_ECHO_WINDOW_MS), new Date(Math.max(...ts) + SEND_ECHO_WINDOW_MS))));
+      if (sent.length > 0) {
+        toInsert = toInsert.filter(({ m, page }) => {
+          if (m.direction !== 'outbound' || m.text === null) return true;
+          const cid = convIdByKey.get(convKey(page.id, m.psid));
+          const dup = sent.some((e) => e.conversationId === cid && e.mid !== m.mid && e.text === m.text && Math.abs(e.sentAt.getTime() - m.sentAtMs) <= SEND_ECHO_WINDOW_MS);
+          if (dup) result.heuristicSkipped += 1;
+          return !dup;
+        });
+      }
+    }
   }
 
   // 3) Tin nhắn: ON CONFLICT (mid) DO NOTHING, dòng trả về là những tin mới thật sự.

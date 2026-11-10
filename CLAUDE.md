@@ -26,7 +26,7 @@ Nguyên tắc sản phẩm:
 - Khóa ổn định để tham chiếu một tin (ví dụ `message_id` trong prompt AI) là `messages.id` (UUID), không phải `mid`.
 - Không bỏ tin im lặng: Meta đã nhận 200 thì không gửi lại. Tin chưa lưu được phải retry rồi vào dead-letter, không được `return` lặng lẽ.
 - Không ghi query string của request vào log (chứa `hub.verify_token`, `code`/`state` OAuth); `buildApp` đã bỏ query khỏi log.
-- Không gửi tin nhắn cho khách (module này chỉ đọc).
+- Gửi tin cho khách (`src/send/`, `POST /api/conversations/:id/send`) **chỉ khi người dùng bấm gửi**: không có job, cron hay hook nào gọi `send`. Kiểm cửa sổ 24 giờ (`last_user_interaction_at`) và trạng thái Page TRƯỚC khi gọi Meta; không log nội dung tin. Tin demo chỉ ghi giả lập, không tới Messenger.
 - Page token mã hóa khi lưu (AES-256-GCM); không log token; không log nội dung tin nhắn ở mức info.
 - Không hard-code secret; mọi cấu hình qua `.env` (mẫu: `.env.example`).
 - AI (Module 2): chỉ tạo **đề xuất** (`proposals`); dữ liệu đã duyệt mới vào `profile_fields`. Mỗi trường kèm `evidence` là chuỗi con đã kiểm chứng trong tin khách đã lưu, không lưu chuỗi do mô hình viết. Không bao giờ giải biểu thức thời gian mơ hồ thành ngày.

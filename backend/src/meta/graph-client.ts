@@ -328,6 +328,21 @@ export class GraphClient {
     }
   }
 
+  /**
+   * Gửi tin văn bản qua Send API (`POST /me/messages`). Chỉ `RESPONSE` (trả lời trong cửa sổ 24 giờ sau tin của
+   * khách); loại tin khác cần thẻ hoặc quyền riêng và chưa được hỗ trợ. Trả `message_id` của Meta.
+   */
+  async sendText(pageToken: string, psid: string, text: string, opts: { messagingType: 'RESPONSE' } = { messagingType: 'RESPONSE' }): Promise<{ messageId: string }> {
+    const body = await this.#request('POST', 'me/messages', {
+      params: { recipient: JSON.stringify({ id: psid }), message: JSON.stringify({ text }), messaging_type: opts.messagingType },
+      accessToken: pageToken,
+      secrets: text.length >= 8 ? [text] : [],
+    });
+    const parsed = z.object({ message_id: z.string().min(1) }).safeParse(body);
+    if (!parsed.success) throw new GraphApiError('Meta không trả message_id cho tin vừa gửi.', 200, null, null, null);
+    return { messageId: parsed.data.message_id };
+  }
+
   /** Ngừng nhận webhook của Page cho app này (`DELETE /{page-id}/subscribed_apps`). */
   async unsubscribePage(fbPageId: string, pageToken: string): Promise<void> {
     const body = await this.#request('DELETE', `${encodeURIComponent(fbPageId)}/subscribed_apps`, { params: {}, accessToken: pageToken });

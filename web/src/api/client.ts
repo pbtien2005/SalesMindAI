@@ -35,9 +35,9 @@ export const setUnauthorizedHandler = (fn: (() => void) | null): void => {
 /** Các route `/api/auth/*` tự xử lý 401 (sai mật khẩu hay chưa đăng nhập không có nghĩa là "phiên hết hạn giữa chừng"). */
 const isAuthAttempt = (path: string) => path.startsWith('/api/auth/');
 
-async function request<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
+async function request<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown, extra: Record<string, string> = {}): Promise<T> {
   // x-requested-with: header chống CSRF mà backend bắt buộc cho mọi POST (cookie phiên đi kèm tự động).
-  const headers: Record<string, string> = { 'x-requested-with': 'salesmind' };
+  const headers: Record<string, string> = { 'x-requested-with': 'salesmind', ...extra };
   if (body !== undefined) headers['content-type'] = 'application/json';
 
   let res: Response;
@@ -122,5 +122,7 @@ export const api = {
 
   customerMessage: (target: { persona: string } | { conversationId: string }, text: string) =>
     post<{ accepted: true; conversationId: string }>('/api/demo/customer-message', { ...target, text }),
+  send: (conversationId: string, text: string, idempotencyKey: string) =>
+    request<{ ok: true; messageId: string }>('POST', `/api/conversations/${encodeURIComponent(conversationId)}/send`, { text }, { 'idempotency-key': idempotencyKey }),
   pageMessage: (conversationId: string, text: string) => post<{ accepted: true }>('/api/demo/page-message', { conversationId, text }),
 };

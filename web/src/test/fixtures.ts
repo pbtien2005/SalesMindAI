@@ -42,6 +42,7 @@ export const proposal = (over: Partial<ProposalView> & Pick<ProposalView, 'id' |
 
 export const detail = (over: Partial<ConversationDetail> = {}): ConversationDetail => ({
   summary: summary(),
+  reply: { open: true, closesAt: '2026-11-14T02:00:00.000Z', pageActive: true },
   messages: [],
   approved: [],
   autoFill: [],

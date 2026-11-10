@@ -2,7 +2,7 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NEEDS_CLARIFICATION, type ConversationDetail } from '../api/types';
-import { detail, evidenceOf, msg, proposal, summary } from '../test/fixtures';
+import { detail, evidenceOf, meLan, msg, proposal, summary } from '../test/fixtures';
 import { json, mockFetch, renderApp } from '../test/render';
 import { ChatView } from './ChatView';
 
@@ -192,5 +192,52 @@ describe('ChatView (cảnh 3)', () => {
     renderApp(<ChatView />);
     expect(await screen.findByText('Chưa có hội thoại nào.')).toBeTruthy();
     expect(screen.getByText('Khi có khách nhắn tới, cuộc trò chuyện sẽ hiện ở đây.')).toBeTruthy();
+  });
+});
+
+describe('khung trả lời của doanh nghiệp thật (không demo)', () => {
+  const real = { ...meLan, demoTenant: false, role: 'owner' as const, displayName: 'Chủ shop', email: 'chu@shop.vn' };
+
+  function serverFor(reply: { open: boolean; closesAt: string | null; pageActive: boolean }) {
+    const d = detail({ reply });
+    return mockFetch(async (url) => {
+      if (url.startsWith('/api/inbox')) return json({ now: '2026-11-13T02:45:00.000Z', conversations: [d.summary], nextCursor: null });
+      if (url.startsWith('/api/conversations/') && url.endsWith('/send')) return json({ ok: true, messageId: 'm1' });
+      if (url.startsWith('/api/conversations/')) return json(d);
+      return json({ error: { code: 'not_found', message: url } }, 404);
+    });
+  }
+
+  it('cửa sổ còn mở: gửi tin thật tới /send kèm khóa chống gửi trùng, rồi xóa ô nhập', async () => {
+    const user = userEvent.setup();
+    const f = serverFor({ open: true, closesAt: '2026-11-14T02:00:00.000Z', pageActive: true });
+    renderApp(<ChatView />, real);
+    await screen.findByRole('heading', { name: 'Anh Minh', level: 2 });
+    const box = screen.getByLabelText('Tin trả lời cho khách') as HTMLInputElement;
+    await user.type(box, 'Dạ em chào anh ạ');
+    await user.click(screen.getByRole('button', { name: 'Gửi' }));
+    await waitFor(() => expect(f.posts().some((p) => p.url.endsWith('/send'))).toBe(true));
+    const post = f.posts().find((p) => p.url.endsWith('/send'))!;
+    expect(JSON.parse(post.init.body as string)).toEqual({ text: 'Dạ em chào anh ạ' });
+    expect(post.init.headers['idempotency-key']).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+    expect(post.init.headers['x-requested-with']).toBe('salesmind');
+    await waitFor(() => expect(box.value).toBe(''));
+    expect(f.posts().some((p) => p.url.endsWith('/page-message'))).toBe(false);
+  });
+
+  it('quá 24 giờ: không có ô gửi, báo rõ lý do', async () => {
+    serverFor({ open: false, closesAt: '2026-11-12T02:00:00.000Z', pageActive: true });
+    renderApp(<ChatView />, real);
+    await screen.findByRole('heading', { name: 'Anh Minh', level: 2 });
+    expect(screen.queryByLabelText('Tin trả lời cho khách')).toBeNull();
+    expect(screen.getByText(/quá 24 giờ kể từ tin cuối/)).toBeTruthy();
+  });
+
+  it('Page cần kết nối lại: không có ô gửi, báo cách khắc phục', async () => {
+    serverFor({ open: true, closesAt: null, pageActive: false });
+    renderApp(<ChatView />, real);
+    await screen.findByRole('heading', { name: 'Anh Minh', level: 2 });
+    expect(screen.queryByLabelText('Tin trả lời cho khách')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('kết nối lại');
   });
 });

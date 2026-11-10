@@ -21,7 +21,7 @@ const id = () => uuid('id').primaryKey().default(sql`uuidv7()`);
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 
 export const pageStatus = pgEnum('page_status', ['active', 'token_invalid', 'disconnected']);
-export const messageSource = pgEnum('message_source', ['webhook', 'backfill']);
+export const messageSource = pgEnum('message_source', ['webhook', 'backfill', 'send']);
 /** Hướng của tin: từ khách tới Page, hay từ Page tới khách (echo, hoặc tin Page gửi lấy qua backfill). */
 export const messageDirection = pgEnum('message_direction', ['inbound', 'outbound']);
 /**
@@ -139,6 +139,8 @@ export const messages = pgTable(
     senderKind: senderKind('sender_kind').notNull().default('customer'),
     /** `message.app_id` của echo: app đã gửi tin. Null với tin của khách và tin lấy qua backfill. */
     appId: text('app_id'),
+    /** Người (SalesMind) đã bấm gửi; chỉ có với tin do SalesMind gửi qua Send API. */
+    sentByUserId: uuid('sent_by_user_id').references(() => users.id, { onDelete: 'set null' }),
     /** Null khi tin chỉ có attachment. */
     text: text('text'),
     attachments: jsonb('attachments'),

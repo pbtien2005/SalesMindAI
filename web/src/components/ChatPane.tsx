@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { formatDay, formatTime, formatWait } from '../api/format';
-import { usePageMessage, useStopFollowup } from '../api/hooks';
+import { usePageMessage, useSendMessage, useStopFollowup } from '../api/hooks';
 import type { ConversationDetail, MessageView } from '../api/types';
 import { useSession } from '../state/session';
 import { allEvidence } from '../lib/card';
@@ -46,6 +46,7 @@ export function ChatPane({ detail, flashId }: { detail: ConversationDetail; flas
   const { summary, messages } = detail;
   const stop = useStopFollowup();
   const send = usePageMessage();
+  const realSend = useSendMessage();
   const [draft, setDraft] = useState('');
   const [confirmStop, setConfirmStop] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -67,8 +68,9 @@ export function ChatPane({ detail, flashId }: { detail: ConversationDetail; flas
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const text = draft.trim();
-    if (text === '' || send.isPending) return;
-    send.mutate({ conversationId: summary.id, text }, { onSuccess: () => setDraft('') });
+    if (text === '' || send.isPending || realSend.isPending) return;
+    if (demo) send.mutate({ conversationId: summary.id, text }, { onSuccess: () => setDraft('') });
+    else realSend.mutate({ conversationId: summary.id, text }, { onSuccess: () => setDraft('') });
   };
 
   let subtitle = 'Chưa có tin nhắn';
@@ -176,8 +178,37 @@ export function ChatPane({ detail, flashId }: { detail: ConversationDetail; flas
             </div>
             {send.error ? <ErrorBanner error={send.error} /> : null}
           </>
+        ) : !detail.reply.pageActive ? (
+          <div role="alert" className="text-sm text-amber">Page này cần được kết nối lại (mục Page Facebook) trước khi gửi tin.</div>
+        ) : !detail.reply.open ? (
+          <div role="status" className="text-sm text-ink-2">
+            Đã quá 24 giờ kể từ tin cuối của khách, Facebook không cho gửi tin chủ động. Hãy chờ khách nhắn lại, hoặc trả lời bằng công cụ khác của Page.
+          </div>
         ) : (
-          <div className="text-xs text-ink-3">Trả lời khách ở hộp thư của Page trên Facebook. Gửi tin ngay từ SalesMind sẽ có ở bản sau.</div>
+          <>
+            {detail.reply.closesAt ? (
+              <div className="text-xs text-ink-3">Còn đến {formatTime(detail.reply.closesAt)} {formatDay(detail.reply.closesAt)} để trả lời khách này. Tin gửi đi là tin thật tới Messenger của khách.</div>
+            ) : null}
+            <div className="flex gap-2">
+              <label className="sr-only" htmlFor="real-msg">
+                Tin trả lời cho khách
+              </label>
+              <input
+                id="real-msg"
+                name="reply"
+                autoComplete="off"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                maxLength={1000}
+                placeholder="Gõ tin trả lời cho khách…"
+                className="h-[42px] grow rounded-lg border border-line-strong px-3 text-sm"
+              />
+              <button type="submit" disabled={draft.trim() === '' || realSend.isPending} className="h-[42px] rounded-lg border-0 bg-brand px-[18px] font-semibold text-white disabled:bg-[#c9d2e0] disabled:text-ink-2">
+                Gửi
+              </button>
+            </div>
+            {realSend.error ? <ErrorBanner error={realSend.error} /> : null}
+          </>
         )}
       </form>
     </section>

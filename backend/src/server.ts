@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { GraphMessageSender } from './send/sender.js';
 import { ConsoleMailer, UnavailableMailer } from './auth/mailer.js';
 import { buildApp } from './app.js';
 import { loadEnv } from './config/env.js';
@@ -66,7 +67,7 @@ const app = buildApp(
       session: { idleDays: env.SESSION_IDLE_DAYS, maxDays: env.SESSION_MAX_DAYS },
     },
     // API demo chỉ tồn tại khi DEMO_MODE=true (không có đăng nhập).
-    api: { db: dbHandle.db, crypto, demoMode: env.DEMO_MODE, facebook: { facebookConfigured: !/^changeme/i.test(env.FB_APP_ID) && !/^changeme/i.test(env.APP_SECRET), graph, backfill: createBackfillQueue(boss) }, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } },
+    api: { db: dbHandle.db, crypto, demoMode: env.DEMO_MODE, sender: new GraphMessageSender({ db: dbHandle.db, crypto, graph, ownAppId: env.FB_APP_ID }), facebook: { facebookConfigured: !/^changeme/i.test(env.FB_APP_ID) && !/^changeme/i.test(env.APP_SECRET), graph, backfill: createBackfillQueue(boss) }, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } },
   },
 );
 

@@ -4,8 +4,9 @@
  */
 import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { conversations, followupState, messages, profileFields, proposals, tasks } from '../db/schema.js';
+import { conversations, followupState, pages, messages, profileFields, proposals, tasks } from '../db/schema.js';
 import { LIGHT_FIELDS, REVIEW_FIELDS, SIGNAL_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
+import { sendWindow } from '../send/window.js';
 import { loadSummariesFor, type ConversationSummary } from '../followup/overview.js';
 
 const MAX_MESSAGES = 300;
@@ -52,6 +53,8 @@ export interface ConversationDetail {
   /** Hộp đề xuất: những mục cần Sale duyệt. */
   box: BoxItem[];
   tasks: Array<{ id: string; title: string; dueAt: Date; source: string }>;
+  /** Có gửi tin được cho khách này không (cửa sổ 24 giờ và trạng thái Page). */
+  reply: { open: boolean; closesAt: Date | null; pageActive: boolean };
 }
 
 const asView = (p: typeof proposals.$inferSelect): ProposalView => ({
@@ -119,8 +122,11 @@ export async function loadConversationDetail(db: Db, tenantId: string, conversat
     .where(and(eq(tasks.conversationId, conversationId), isNull(tasks.doneAt)))
     .orderBy(asc(tasks.dueAt));
 
+  const [pg] = await db.select({ status: pages.status }).from(pages).where(eq(pages.id, conv.pageId));
+  const win = sendWindow(conv.lastUserInteractionAt, now);
   return {
     summary,
+    reply: { open: win.open, closesAt: win.closesAt, pageActive: pg?.status === 'active' },
     messages: msgs,
     approved: approvedRows.map((r) => ({
       field: r.field,
