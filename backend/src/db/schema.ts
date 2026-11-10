@@ -498,6 +498,17 @@ export const aiUsage = pgTable(
   (t) => [primaryKey({ columns: [t.tenantId, t.day] })],
 );
 
+/** Yêu cầu xóa dữ liệu do Meta gửi tới `/meta/data-deletion`. */
+export const deletionRequests = pgTable('deletion_requests', {
+  id: id(),
+  code: text('code').notNull().unique(),
+  fbUserId: text('fb_user_id').notNull(),
+  /** `completed`: đã xóa dữ liệu gắn trực tiếp; `received`: đã ghi nhận, chờ người vận hành. */
+  status: text('status').notNull(),
+  deletedConversations: integer('deleted_conversations').notNull().default(0),
+  createdAt: createdAt(),
+});
+
 export type Tenant = typeof tenants.$inferSelect;
 export type ExtractionRun = typeof extractionRuns.$inferSelect;
 export type Proposal = typeof proposals.$inferSelect;

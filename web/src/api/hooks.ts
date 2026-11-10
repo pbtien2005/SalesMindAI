@@ -181,3 +181,15 @@ function useAiMutation(fn: () => Promise<unknown>) {
 }
 export const useEnableAi = () => useAiMutation(() => api.enableAi());
 export const useDisableAi = () => useAiMutation(() => api.disableAi());
+
+/** Xóa toàn bộ dữ liệu doanh nghiệp. Thành công thì phiên không còn nên về màn đăng nhập. */
+export function useDeleteTenant() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { confirmName: string; password: string }) => api.deleteTenant(v.confirmName, v.password),
+    onSuccess: () => {
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'authConfig' && q.queryKey[0] !== 'me' });
+      qc.setQueryData(['me'], null);
+    },
+  });
+}

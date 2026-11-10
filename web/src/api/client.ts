@@ -94,6 +94,7 @@ export const api = {
   connectUrl: () => post<{ url: string; expiresInSeconds: number }>('/api/pages/connect-url'),
   disconnectPage: (id: string) => post<{ ok: true; metaUnsubscribed: boolean }>(`/api/pages/${encodeURIComponent(id)}/disconnect`),
   backfillPage: (id: string) => post<{ queued: boolean }>(`/api/pages/${encodeURIComponent(id)}/backfill`),
+  deleteTenant: (confirmName: string, password: string) => post<{ ok: true }>('/api/tenant/delete', { confirmName, password }),
   ai: () => get<AiStatus>('/api/ai'),
   enableAi: () => post<{ enabled: true }>('/api/ai/enable', { acknowledgeLegal: true }),
   disableAi: () => post<{ enabled: false }>('/api/ai/disable'),

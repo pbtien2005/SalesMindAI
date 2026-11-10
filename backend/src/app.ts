@@ -13,6 +13,7 @@ import { oauthRoutes, type OAuthRouteOptions } from './auth/oauth-routes.js';
 import type { WebhookPoster } from './demo/simulator.js';
 import { healthRoutes, type ReadinessCheck } from './health.js';
 import type { WebhookQueue } from './queue/boss.js';
+import { privacyRoutes } from './privacy/routes.js';
 import { hasWebBuild, registerWebStatic } from './web-static.js';
 import { webhookRoutes } from './webhook/routes.js';
 
@@ -128,6 +129,7 @@ export function buildApp(opts: FastifyServerOptions = {}, deps?: AppDeps): Fasti
       queue: deps.queue,
       ...(deps.enqueueTimeoutMs ? { enqueueTimeoutMs: deps.enqueueTimeoutMs } : {}),
     });
+    if (deps.auth) void app.register(privacyRoutes, { db: deps.auth.db, appSecret: deps.appSecret, publicBaseUrl: deps.auth.publicBaseUrl });
     if (deps.api && !deps.auth) throw new Error('API nghiệp vụ cần cấu hình đăng nhập (deps.auth).');
     if (deps.oauth) void app.register(oauthRoutes, deps.oauth);
     if (deps.auth) {

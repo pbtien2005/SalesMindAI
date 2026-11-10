@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatDateTime } from '../api/format';
-import { useAi, useDisableAi, useEnableAi } from '../api/hooks';
+import { useAi, useDeleteTenant, useDisableAi, useEnableAi } from '../api/hooks';
 import { useSession } from '../state/session';
 import { ErrorBanner } from './ErrorBanner';
 import { Main } from './Main';
@@ -8,6 +8,43 @@ import { StatusChip } from './StatusChip';
 
 const btn = 'h-10 rounded-lg border border-line-strong bg-white px-4 text-sm font-semibold disabled:opacity-50';
 const primary = 'h-10 rounded-lg border-0 bg-brand px-5 text-sm font-semibold text-white disabled:bg-[#c9d2e0] disabled:text-ink-2';
+
+/** Xuất và xóa dữ liệu doanh nghiệp (chỉ chủ). */
+function DataSection() {
+  const del = useDeleteTenant();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  return (
+    <section aria-label="Dữ liệu doanh nghiệp" className="rounded-xl border border-line bg-white p-5 text-sm">
+      <h3 className="m-0 mb-2 text-base font-bold">Dữ liệu doanh nghiệp</h3>
+      <p className="mt-0 text-ink-3">Tải toàn bộ dữ liệu (hội thoại, tin nhắn, hồ sơ khách, việc) dưới dạng JSON. Không gồm mật khẩu hay token.</p>
+      <a href="/api/tenant/export" download className="inline-flex h-10 items-center rounded-lg border border-line-strong bg-white px-4 font-semibold text-ink no-underline">Tải dữ liệu</a>
+      <hr className="my-4 border-line" />
+      {open ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            del.mutate({ confirmName: name, password });
+          }}
+        >
+          <p className="mt-0 font-semibold text-p1">Xóa vĩnh viễn toàn bộ dữ liệu, mọi thành viên và Page đã kết nối. Không hoàn tác được.</p>
+          <label htmlFor="del-name" className="mb-1 block text-xs font-semibold">Nhập đúng tên doanh nghiệp để xác nhận</label>
+          <input id="del-name" name="confirm-name" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} className="mb-3 h-10 w-full rounded-lg border border-line-strong px-3" />
+          <label htmlFor="del-pass" className="mb-1 block text-xs font-semibold">Mật khẩu của bạn</label>
+          <input id="del-pass" name="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="mb-3 h-10 w-full rounded-lg border border-line-strong px-3" />
+          {del.error ? <ErrorBanner error={del.error} /> : null}
+          <div className="mt-3 flex gap-2">
+            <button type="submit" className="h-10 rounded-lg border-0 bg-p1 px-4 font-semibold text-white disabled:opacity-50" disabled={name.trim() === '' || password === '' || del.isPending}>Xóa vĩnh viễn</button>
+            <button type="button" className={btn} onClick={() => setOpen(false)}>Hủy</button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" className={btn} onClick={() => setOpen(true)}>Xóa dữ liệu doanh nghiệp…</button>
+      )}
+    </section>
+  );
+}
 
 export function AiView() {
   const { role } = useSession();
@@ -78,6 +115,8 @@ export function AiView() {
             )}
           </section>
         ) : null}
+
+        {isOwner ? <DataSection /> : null}
 
         {d?.enabled && isOwner ? (
           <div>

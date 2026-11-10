@@ -22,6 +22,7 @@ import { loadConversationDetail, loadHistory } from './read-models.js';
 import { nowFor } from './scope.js';
 import { teamRoutes } from './team.js';
 import { aiRoutes } from './ai.js';
+import { tenantRoutes } from './tenant.js';
 import { SendError, type MessageSender } from '../send/sender.js';
 import { isDemoTenant } from './scope.js';
 import { pageRoutes, type PageRouteOptions } from './pages.js';
@@ -68,6 +69,7 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
 
   const nowOf = (tenantId: string) => nowFor(db, tenantId, opts.demoMode);
   await app.register(pageRoutes, { db, crypto: opts.crypto, publicBaseUrl: opts.publicBaseUrl, facebookConfigured: opts.facebook?.facebookConfigured ?? false, ...(opts.facebook?.graph ? { graph: opts.facebook.graph } : {}), ...(opts.facebook?.backfill ? { backfill: opts.facebook.backfill } : {}) });
+  await app.register(tenantRoutes, { db, crypto: opts.crypto, ...(opts.facebook?.graph ? { graph: opts.facebook.graph } : {}), now: opts.guard.now ?? (() => new Date()) });
   await app.register(aiRoutes, { db, mode: opts.ai?.mode ?? 'offline', defaultCap: opts.ai?.defaultCap ?? 500, now: opts.guard.now ?? (() => new Date()) });
   await app.register(teamRoutes, { db, mailer: opts.mailer, publicBaseUrl: opts.publicBaseUrl, now: opts.guard.now ?? (() => new Date()) });
 

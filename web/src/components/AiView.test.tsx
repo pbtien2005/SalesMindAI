@@ -57,3 +57,24 @@ describe('màn AI', () => {
     expect(await screen.findByText(/không gọi AI bên ngoài/)).toBeTruthy();
   });
 });
+
+describe('dữ liệu doanh nghiệp (chỉ chủ)', () => {
+  it('manager không thấy phần xóa; owner phải mở form, nhập tên và mật khẩu rồi mới gửi', async () => {
+    const user = userEvent.setup();
+    const f = server(OFF);
+    renderApp(<AiView />, { ...meHa, role: 'manager' });
+    await screen.findByText('Chỉ chủ doanh nghiệp mới bật được AI.');
+    expect(screen.queryByText('Dữ liệu doanh nghiệp')).toBeNull();
+    cleanup();
+    renderApp(<AiView />, owner);
+    await user.click(await screen.findByRole('button', { name: 'Xóa dữ liệu doanh nghiệp…' }));
+    const submit = screen.getByRole('button', { name: 'Xóa vĩnh viễn' }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    await user.type(screen.getByLabelText(/Nhập đúng tên/), 'Nội thất ABC');
+    await user.type(screen.getByLabelText('Mật khẩu của bạn'), 'mat-khau-dai-123');
+    expect(f.posts()).toHaveLength(0);
+    await user.click(submit);
+    await vi.waitFor(() => expect(f.posts().map((p) => p.url)).toEqual(['/api/tenant/delete']));
+    expect(JSON.parse(f.posts()[0]!.init.body as string)).toEqual({ confirmName: 'Nội thất ABC', password: 'mat-khau-dai-123' });
+  });
+});

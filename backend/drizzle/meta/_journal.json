@@ -71,6 +71,13 @@
       "when": 1794335160896,
       "tag": "0009_marvelous_paladin",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794335782938,
+      "tag": "0010_typical_lily_hollister",
+      "breakpoints": true
     }
   ]
 }
