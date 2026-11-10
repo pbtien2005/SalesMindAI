@@ -8,6 +8,7 @@ import { validatePassword } from '../auth/password.js';
 import { consumeUserToken, createSession, createUserToken, revokeSession, type SessionOptions } from '../auth/session.js';
 import { AuthError, authenticate, createTenantWithOwner, findUserByEmail, setPassword } from '../auth/users.js';
 import type { Db } from '../db/client.js';
+import { DEMO_USERS } from '../demo/seed.js';
 import { auditLog, users } from '../db/schema.js';
 import { apiError, cookieName, makeRequireAuth } from './guard.js';
 
@@ -19,6 +20,8 @@ export interface AuthRouteOptions {
   /** Gốc công khai, dùng ghép liên kết trong thư. Cookie `Secure` khi là https. */
   publicBaseUrl: string;
   session?: SessionOptions;
+  /** DEMO_MODE: bật `POST /api/auth/demo-login` (vào nhanh bằng tài khoản Lan hoặc chị Hà, không cần mật khẩu). */
+  demoMode?: boolean;
   rateLimit?: { max: number; timeWindowMs: number };
   now?: () => Date;
 }
@@ -51,7 +54,19 @@ export const authRoutes: FastifyPluginAsync<AuthRouteOptions> = async (app, opts
   const setCookie = (reply: Parameters<typeof apiError>[0], token: string, expiresAt: Date) =>
     reply.setCookie(name, token, { httpOnly: true, sameSite: 'lax', secure, path: '/', expires: expiresAt });
 
-  app.get('/api/auth/config', async () => ({ signupOpen: opts.signupOpen }));
+  app.get('/api/auth/config', async () => ({ signupOpen: opts.signupOpen, demoLogin: opts.demoMode === true }));
+
+  if (opts.demoMode) {
+    app.post('/api/auth/demo-login', async (req, reply) => {
+      const as = z.object({ as: z.enum(['lan', 'ha']) }).safeParse(req.body);
+      if (!as.success) return apiError(reply, 422, 'invalid', 'Chọn lan hoặc ha.');
+      const u = await findUserByEmail(db, DEMO_USERS[as.data.as].email);
+      if (!u) return apiError(reply, 409, 'no_demo_data', 'Chưa có dữ liệu demo. Chạy: npm run cli -- demo:reset');
+      const { token, expiresAt } = await createSession(db, u.id, { userAgent: String(req.headers['user-agent'] ?? '') }, now(), opts.session);
+      setCookie(reply, token, expiresAt);
+      return reply.send({ ok: true });
+    });
+  }
 
   app.post('/api/auth/signup', async (req, reply) => {
     if (!opts.signupOpen) return apiError(reply, 404, 'not_found', 'Không có đường dẫn này.');

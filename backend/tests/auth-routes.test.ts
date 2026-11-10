@@ -168,7 +168,7 @@ describe('đổi mật khẩu', () => {
 describe('đăng ký tự do', () => {
   it('đang đóng thì 404', async () => {
     expect((await post('/api/auth/signup', { email: 'a@b.vn', password: PASSWORD, displayName: 'A', businessName: 'B' })).statusCode).toBe(404);
-    expect((await app.inject({ method: 'GET', url: '/api/auth/config' })).json()).toEqual({ signupOpen: false });
+    expect((await app.inject({ method: 'GET', url: '/api/auth/config' })).json()).toEqual({ signupOpen: false, demoLogin: false });
   });
 
   it('mở: tạo tenant và owner, gửi thư xác minh, xác minh được; email đã có vẫn 202 và không tạo thêm', async () => {

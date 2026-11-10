@@ -2,6 +2,7 @@
 import { eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { auditLog, memberships, tenants, users, type MemberRole } from '../db/schema.js';
+import { DEMO_TENANT_NAME } from '../demo/seed.js';
 import { hashPassword, needsRehash, normalizeEmail, validatePassword, verifyPassword } from './password.js';
 import { revokeSessions } from './session.js';
 
@@ -65,6 +66,7 @@ export async function createTenantWithOwner(
 ): Promise<{ userId: string; tenantId: string }> {
   const name = input.businessName.normalize('NFC').trim().replace(/\s+/g, ' ');
   if (name.length < 1 || name.length > 120) throw new AuthError('invalid_name', 'Tên doanh nghiệp phải có từ 1 đến 120 ký tự.');
+  if (name === DEMO_TENANT_NAME) throw new AuthError('invalid_name', 'Tên doanh nghiệp này không được dùng.');
   // Kiểm tra email/mật khẩu trước khi tạo tenant để lỗi không để lại tenant mồ côi.
   const email = normalizeEmail(input.email);
   if (!email) throw new AuthError('invalid_email', 'Email không hợp lệ.');

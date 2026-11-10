@@ -17,6 +17,12 @@ export interface SimDeps {
 
 export class SimError extends Error {
   override readonly name = 'SimError';
+  constructor(
+    message: string,
+    readonly code: 'invalid' | 'not_found' = 'invalid',
+  ) {
+    super(message);
+  }
 }
 
 const MAX_TEXT = 2000;
@@ -51,7 +57,7 @@ async function psidOf(db: Db, ctx: DemoContext, conversationId: string): Promise
     .select({ psid: conversations.psid })
     .from(conversations)
     .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, ctx.tenantId)));
-  if (!c) throw new SimError('Không có hội thoại này.');
+  if (!c) throw new SimError('Không có hội thoại này.', 'not_found');
   return c.psid;
 }
 

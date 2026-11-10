@@ -29,7 +29,7 @@ export interface AppDeps {
    * Có thì bật API demo `/api/*` (KHÔNG có đăng nhập; chỉ dùng khi DEMO_MODE=true, xem `src/api/routes.ts`).
    * `appSecret` dùng chung với webhook để ký tin giả lập.
    */
-  api?: Pick<ApiOptions, 'db' | 'crypto' | 'log'>;
+  api?: Pick<ApiOptions, 'db' | 'crypto' | 'log' | 'demoMode'>;
   /** Có thì bật tài khoản: `/api/auth/*`, cookie phiên và chống CSRF cho mọi `/api/*`. */
   auth?: AuthRouteOptions;
 }
@@ -125,11 +125,11 @@ export function buildApp(opts: FastifyServerOptions = {}, deps?: AppDeps): Fasti
       queue: deps.queue,
       ...(deps.enqueueTimeoutMs ? { enqueueTimeoutMs: deps.enqueueTimeoutMs } : {}),
     });
+    if (deps.api && !deps.auth) throw new Error('API nghiệp vụ cần cấu hình đăng nhập (deps.auth).');
     if (deps.oauth) void app.register(oauthRoutes, deps.oauth);
     if (deps.auth) {
       void app.register(cookie);
-      // P1: chỉ /api/auth/*. P2 mở rộng ra mọi /api/* khi API demo chuyển sang xác thực bằng phiên.
-      registerCsrfGuard(app, '/api/auth/');
+      registerCsrfGuard(app);
       void app.register(authRoutes, deps.auth);
     }
     if (deps.api) {
@@ -145,7 +145,13 @@ export function buildApp(opts: FastifyServerOptions = {}, deps?: AppDeps): Fasti
           return { status: res.statusCode };
         },
       };
-      void app.register(apiRoutes, { ...deps.api, appSecret: deps.appSecret, poster });
+      const a = deps.auth!;
+      void app.register(apiRoutes, {
+        ...deps.api,
+        appSecret: deps.appSecret,
+        poster,
+        guard: { db: deps.api.db, secureCookie: a.publicBaseUrl.startsWith('https://'), ...(a.session ? { session: a.session } : {}), ...(a.now ? { now: a.now } : {}) },
+      });
     }
   }
 

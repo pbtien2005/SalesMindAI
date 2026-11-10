@@ -5,7 +5,9 @@
 import { eq, sql } from 'drizzle-orm';
 import type { TokenCrypto } from '../crypto/token-crypto.js';
 import type { Db } from '../db/client.js';
-import { conversations, messages, pages, tasks, tenants } from '../db/schema.js';
+import { randomBytes } from 'node:crypto';
+import { createUser } from '../auth/users.js';
+import { conversations, memberships, messages, pages, tasks, tenants, users } from '../db/schema.js';
 import { OfflineExtractor } from '../extraction/offline-extractor.js';
 import { runExtraction } from '../extraction/run.js';
 import { setClockTo } from './clock.js';
@@ -21,6 +23,27 @@ export const DEMO_START = new Date(Date.UTC(2026, 10, 12, 2, 0));
 
 /** Đổi giờ Việt Nam (UTC+7) sang Date. */
 export const vn = (y: number, m: number, d: number, h: number, min = 0) => new Date(Date.UTC(y, m - 1, d, h - 7, min));
+
+/** Hai tài khoản demo cố định. Đăng nhập bằng `POST /api/auth/demo-login` (chỉ DEMO_MODE); mật khẩu ngẫu nhiên, không ai biết. */
+export const DEMO_USERS = {
+  lan: { email: 'lan@demo.local', displayName: 'Lan', role: 'sale' },
+  ha: { email: 'ha@demo.local', displayName: 'chị Hà', role: 'manager' },
+} as const;
+
+/** Tạo (lần đầu) hoặc gắn lại (sau khi đặt lại demo) hai tài khoản demo vào tenant demo. Phiên đăng nhập giữ nguyên. */
+async function ensureDemoUsers(db: Db, tenantId: string, now: Date): Promise<void> {
+  for (const u of Object.values(DEMO_USERS)) {
+    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, u.email));
+    if (!existing) {
+      await createUser(db, { email: u.email, password: randomBytes(24).toString('base64url'), displayName: u.displayName, tenantId, role: u.role, emailVerified: true }, now);
+    } else {
+      await db
+        .insert(memberships)
+        .values({ userId: existing.id, tenantId, role: u.role })
+        .onConflictDoUpdate({ target: memberships.userId, set: { tenantId, role: u.role } });
+    }
+  }
+}
 
 export interface DemoContext {
   tenantId: string;
@@ -43,6 +66,8 @@ async function wipeDemoTenant(db: Db, tenantId: string): Promise<void> {
       'proposals',
       'extraction_runs',
       'tasks',
+      'memberships',
+      'audit_log',
       'followup_state',
       'messages',
       'conversations',
@@ -138,6 +163,7 @@ export async function resetDemo(deps: ResetDeps): Promise<DemoContext & { clockN
     })
     .returning({ id: pages.id });
   const ctx: DemoContext = { tenantId: tenant!.id, pageId: page!.id, fbPageId: DEMO_FB_PAGE_ID };
+  await ensureDemoUsers(db, ctx.tenantId, realNow);
 
   let n = 0;
   const convIds: string[] = [];

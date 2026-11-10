@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
+import { MemoryMailer } from '../src/auth/mailer.js';
 import { createTokenCrypto } from '../src/crypto/token-crypto.js';
 import { DEMO_PAGE_INBOX_APP_ID, resetDemo, vn } from '../src/demo/seed.js';
 import { OfflineExtractor } from '../src/extraction/offline-extractor.js';
@@ -32,12 +33,15 @@ function makeApp(withApi = true) {
           });
         },
       },
-      ...(withApi ? { api: { db, crypto, log } } : {}),
+      api: { db, crypto, log, demoMode: withApi },
+      auth: { db, mailer: new MemoryMailer(), signupOpen: false, demoMode: withApi, publicBaseUrl: 'http://localhost:3000', rateLimit: { max: 10_000, timeWindowMs: 60_000 } },
     },
   );
 }
 
 let app: ReturnType<typeof makeApp>;
+const cookies: Record<'lan' | 'ha', string> = { lan: '', ha: '' };
+const H = { 'x-requested-with': 'salesmind', 'content-type': 'application/json' };
 beforeAll(async () => {
   await truncateAll(handle);
 });
@@ -45,13 +49,17 @@ beforeEach(async () => {
   await truncateAll(handle);
   app = makeApp();
   await resetDemo({ db, crypto, log });
+  for (const who of ['lan', 'ha'] as const) {
+    const res = await app.inject({ method: 'POST', url: '/api/auth/demo-login', headers: H, payload: { as: who } });
+    cookies[who] = String(([] as string[]).concat(res.headers['set-cookie'] as string | string[])[0]).split(';')[0]!;
+  }
 });
 afterAll(async () => {
   await handle.close();
 });
 
 async function call<T = any>(method: 'GET' | 'POST', url: string, body?: unknown, role?: 'lan' | 'ha'): Promise<{ status: number; json: T }> {
-  const res = await app.inject({ method, url, ...(body !== undefined ? { payload: body as object } : {}), headers: role ? { 'x-demo-role': role } : {} });
+  const res = await app.inject({ method, url, ...(body !== undefined ? { payload: body as object } : method === 'POST' ? { payload: {} } : {}), headers: { ...H, cookie: cookies[role ?? 'lan'] } });
   return { status: res.statusCode, json: res.json() as T };
 }
 const inbox = async () => (await call('GET', '/api/inbox')).json.conversations as any[];
@@ -156,7 +164,7 @@ describe('kịch bản demo cảnh 0–3 và 6, chỉ qua API', () => {
 
     // ----- Cảnh 6: chị Hà xem Trang chủ.
     const homeHa = (await call('GET', '/api/home', undefined, 'ha')).json;
-    expect(homeHa.role).toBe('ha');
+    expect(homeHa.role).toBe('manager');
     expect(homeHa.p1.map((c: any) => c.displayName)).toEqual(['Chị Thu']);
     expect(homeHa.overdue.map((t: any) => t.displayName).sort()).toEqual(['Anh Đức', 'Chị Ngọc']);
     expect(homeHa.ai).toEqual({ autoFilled: 3, saleEdited: 0, askedDate: 1, approved: 3 });
@@ -192,8 +200,7 @@ describe('kịch bản demo cảnh 0–3 và 6, chỉ qua API', () => {
 
 describe('xác thực đầu vào và biên', () => {
   it('vai trò sai, ID sai, hội thoại không có, body sai', async () => {
-    expect((await call('GET', '/api/home', undefined, 'admin' as never)).status).toBe(400);
-    expect((await call('GET', '/api/conversations/khong-phai-uuid')).status).toBe(400);
+    expect((await call('GET', '/api/conversations/khong-phai-uuid')).status).toBe(404);
     expect((await call('GET', '/api/conversations/00000000-0000-7000-8000-000000000000')).status).toBe(404);
     expect((await call('POST', '/api/conversations/00000000-0000-7000-8000-000000000000/stop-followup')).status).toBe(404);
     expect((await call('POST', '/api/proposals/00000000-0000-7000-8000-000000000000/decide', { action: 'accept' })).status).toBe(404);
@@ -205,23 +212,22 @@ describe('xác thực đầu vào và biên', () => {
     expect((await call('POST', '/api/demo/customer-message', { persona: 'minh', text: '   ' })).status).toBe(400);
     expect((await call('POST', '/api/demo/page-message', { conversationId: 'x', text: 'a' })).status).toBe(400);
     const err = (await call('GET', '/api/conversations/khong-phai-uuid')).json;
-    expect(err.error).toEqual({ code: 'invalid', message: expect.any(String) });
+    expect(err.error).toEqual({ code: 'not_found', message: expect.any(String) });
   });
 
-  it('chưa có dữ liệu demo thì báo cách khắc phục (409)', async () => {
-    await truncateAll(handle);
-    const r = await call('GET', '/api/inbox');
-    expect(r.status).toBe(409);
-    expect(r.json.error.code).toBe('no_demo_data');
-    expect(r.json.error.message).toContain('demo:reset');
-  });
-
-  it('API demo không tồn tại khi không bật (DEMO_MODE tắt)', async () => {
-    const plain = makeApp(false);
-    for (const url of ['/api/home', '/api/inbox', '/api/now']) {
-      expect((await plain.inject({ method: 'GET', url })).statusCode, url).toBe(404);
+  it('chưa đăng nhập thì mọi route nghiệp vụ và demo đều 401', async () => {
+    for (const [m, url] of [['GET', '/api/home'], ['GET', '/api/inbox'], ['GET', '/api/now'], ['GET', '/api/overdue'], ['GET', '/api/personas'], ['POST', '/api/demo/reset'], ['POST', '/api/clock/advance']] as const) {
+      const r = await app.inject({ method: m, url, headers: m === 'POST' ? H : {}, ...(m === 'POST' ? { payload: {} } : {}) });
+      expect(r.statusCode, url).toBe(401);
     }
-    expect((await plain.inject({ method: 'POST', url: '/api/demo/reset' })).statusCode).toBe(404);
+  });
+
+  it('không bật DEMO_MODE thì route demo không tồn tại (404) nhưng route nghiệp vụ vẫn có (401 khi chưa đăng nhập)', async () => {
+    const plain = makeApp(false);
+    expect((await plain.inject({ method: 'GET', url: '/api/home' })).statusCode).toBe(401);
+    for (const url of ['/api/demo/reset', '/api/clock/advance', '/api/auth/demo-login']) {
+      expect((await plain.inject({ method: 'POST', url, headers: H, payload: {} })).statusCode, url).toBe(404);
+    }
     await plain.close();
   });
 
