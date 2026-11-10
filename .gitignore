@@ -23,3 +23,7 @@ Thumbs.db
 *.log
 .vscode/
 .vitest/
+
+# Build output của từng package
+backend/dist/
+web/dist/

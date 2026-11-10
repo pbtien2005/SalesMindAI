@@ -34,10 +34,13 @@ Nguyên tắc cốt lõi:
 
 ## Cài đặt và chạy
 
+Repo gồm hai package độc lập: `backend/` (Fastify) và `web/` (Vite, giao diện demo). Mọi lệnh backend chạy trong `backend/`; từ gốc có thể dùng `npm run dev:api`, `test:api`, `typecheck`.
+
 ```bash
+docker compose up -d          # ở gốc repo: PostgreSQL 18 ở cổng 5433
+cd backend
 npm install
 cp .env.example .env          # rồi điền giá trị, xem bảng bên dưới
-docker compose up -d          # PostgreSQL 18 ở cổng 5433
 npm run db:migrate
 npm run dev                   # http://localhost:3000
 ```
@@ -117,7 +120,8 @@ Mọi phản hồi có header `x-request-id` (cũng có trong log dưới tên `
 ## Kiểm thử
 
 ```bash
-docker compose up -d      # test cần PostgreSQL
+docker compose up -d      # ở gốc repo; test cần PostgreSQL
+cd backend
 npm test                  # Vitest: unit, tích hợp với Postgres và pg-boss thật
 npm run typecheck
 ```
@@ -127,21 +131,25 @@ Test dùng database `salesmind_test` (tự tạo, và dựng lại schema sạch
 ## Cấu trúc
 
 ```
-src/
-  app.ts, server.ts       dựng Fastify, logging, request id; điểm khởi động và tắt nhẹ nhàng
-  config/env.ts           đọc và kiểm tra .env (zod)
-  webhook/                GET/POST /webhook
-  meta/                   chữ ký, parse payload, Graph client, làm sạch dữ liệu
-  workers/                xử lý webhook, lưu tin (dùng chung với backfill)
-  backfill/               job liệt kê hội thoại và job từng hội thoại
-  auth/                   Facebook Login: state dùng một lần, lưu Page, route, tenant
-  queue/                  pg-boss: hàng đợi, worker, quản trị (redrive), monitor
-  db/                     schema Drizzle, client, migrate
-  crypto/                 AES-256-GCM cho Page token
-  cli/                    lệnh quản trị
-drizzle/                  migration SQL
-tests/                    Vitest
+backend/
+  src/
+    app.ts, server.ts     dựng Fastify, logging, request id; điểm khởi động và tắt nhẹ nhàng
+    config/env.ts         đọc và kiểm tra .env (zod)
+    webhook/              GET/POST /webhook
+    meta/                 chữ ký, parse payload, Graph client, làm sạch dữ liệu
+    workers/              xử lý webhook, lưu tin (dùng chung với backfill)
+    backfill/             job liệt kê hội thoại và job từng hội thoại
+    auth/                 Facebook Login: state dùng một lần, lưu Page, route, tenant
+    queue/                pg-boss: hàng đợi, worker, quản trị (redrive), monitor
+    db/                   schema Drizzle, client, migrate
+    crypto/               AES-256-GCM cho Page token
+    cli/                  lệnh quản trị
+  drizzle/                migration SQL
+  tests/                  Vitest
+  scripts/                công cụ đánh giá trích xuất
+web/                      giao diện demo (Vite, React)
 doc/                      kế hoạch, hướng dẫn kiểm tra với Page thật, đề án gốc
+docker/, docker-compose.yml   Postgres dev
 ```
 
 ## Giới hạn và rủi ro đã biết

@@ -170,6 +170,19 @@ Các mốc B1–B4 trùng với mốc 3–6 của Module 2 ở trên. Phần dư
 | B6 | HTTP API demo `/api/*` (chỉ khi `DEMO_MODE=true`, không đăng nhập, chỉ nghe 127.0.0.1) | xong | 2026-11-10 | `src/api/{routes,read-models}.ts`, nối vào `buildApp` và `server.ts`. 15 route: `now`, `personas`, `clock/advance`, `demo/reset`, `inbox`, `home`, `overdue`, `conversations/:id` (+ `/history`, `/stop-followup`), `proposals/:id/decide`, `demo/customer-message`, `demo/page-message`. Lỗi trả `{error:{code,message}}` (400/404/409/422). `tests/api.test.ts` 6 test, trong đó **một test chạy trọn kịch bản cảnh 0–3 và 6 chỉ qua API** (Postgres thật, `OfflineExtractor`, hàng đợi xử lý đồng bộ): P1/quá hạn lúc 09:00; hai tin cảnh 1 ra "sofa phòng khách, màu xám" và "tầm 15 triệu" với offset câu gốc đúng; Hộp đề xuất trống ở cảnh 1; Thứ Sáu 09:30 anh Minh bám 1/5 và cô Mai đề xuất ngừng; Lan nhắn lại thì bám về 0; cảnh 3 ra SĐT (câu gốc `0912 345 678`) và timeline có cờ hỏi lại, **không có ngày**; duyệt thiếu ngày trả 422, có `chosenAt` thì thành việc "Khách hẹn ghé xem" 14/11 10:00; Trang chủ của chị Hà: P1 = chị Thu, quá hạn 2, số liệu AI `{tự điền 3, sửa 0, hỏi lại ngày 1, đã duyệt 3}`; lịch sử có người duyệt. Cũng kiểm: API trả 404 khi không bật `DEMO_MODE`, 409 khi chưa có dữ liệu demo, vai trò/ID/body sai. Test ghi chú: `sentAt` (lúc khách gửi, 13/11) nằm trong giá trị timeline có chủ ý, không phải ngày đã giải. |
 | B7 | Vận hành, tài liệu, review | xong phần backend; giao diện chưa làm | 2026-11-10 | `npm run typecheck` sạch; `npx vitest run`: 29 file, 542 test đạt (221 giây). Chạy thật trên server (CLI, webhook có ký, pg-boss, debounce 3 giây, curl): P1 = chị Thu, quá hạn 2, cô Mai đề xuất ngừng Thứ Sáu 09:30, anh Minh bám 1/5, timeline không có ngày và trả 422 khi thiếu `chosenAt`, số liệu AI cuối `{3,0,1,3}`. Thêm [doc/CHAY-DEMO.md](doc/CHAY-DEMO.md). `code-review` (medium) chỉ nêu các điểm về `web/` chưa có mã nguồn: đã sửa CLAUDE.md và CHAY-DEMO.md cho đúng. **Chưa kiểm chứng:** Claude thật (mới chạy `AI_MODE=offline`), Meta thật, giao diện. Chưa có cảnh báo tự động khi nhiều lần trích xuất `failed` (chỉ `extract:status`). `web/` mới có `package.json`. |
 
+## Demo MVP: giao diện `web/` (kế hoạch: `C:\Users\Admin\.claude\plans\ph-n-frontend-c-a-project-hazy-biscuit.md`)
+
+Thiết kế gốc: artifact "SalesMind AI - Phác thảo giao diện" (2 màn: Hội thoại, Trang chủ quản lý) cộng Bảng Giả lập (cần phác thêm).
+
+| Mốc | Nội dung | Trạng thái | Ngày | Bằng chứng |
+|---|---|---|---|---|
+| F0 | Gom backend vào `backend/` (git mv, giữ lịch sử), thêm `package.json` gốc mỏng | xong | 2026-11-10 | Trong `backend/`: `npm run typecheck` sạch; `npm test` 29 file, 542 test đạt (đúng như trước khi chuyển); `npm run cli -- queue:status` chạy; `npm run dev` nghe cổng 3000. Cập nhật README, CLAUDE.md, doc/CHAY-DEMO.md. Lưu ý: `backend/.env` (không theo dõi bởi git) đã được chuyển tay từ gốc. |
+| F1 | Phác Bảng Giả lập và trạng thái đặc biệt trên artifact | chưa làm | | |
+| F2 | Khung `web/`, lớp `api/*`, TopBar/SideNav | chưa làm | | |
+| F3 | Màn Hội thoại | chưa làm | | |
+| F4 | Trang chủ, Bảng Giả lập, trạng thái lỗi/rỗng | chưa làm | | |
+| F5 | Chạy thử kịch bản, rà trợ năng, review | chưa làm | | |
+
 ## Điểm chưa xác minh của Module 2
 
 | # | Điểm | Trạng thái | Ghi chú |

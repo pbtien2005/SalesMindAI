@@ -41,8 +41,10 @@ Nguyên tắc sản phẩm:
 - `code-review`: chạy sau mỗi mốc lớn, trước khi commit.
 
 ## Lệnh chạy
-- `docker compose up -d`: bật Postgres 18 dev (DB `salesmind` và `salesmind_test`), cổng **5433** (tránh đụng PostgreSQL cài sẵn trên máy, thường chiếm 5432)
-- `npm run dev`: chạy server, đọc `.env` (sao chép từ `.env.example`)
+**Cấu trúc thư mục:** `backend/` (Fastify: `src/`, `tests/`, `drizzle/`, `scripts/`, `.env`) và `web/` (Vite, giao diện demo) là hai package độc lập; `doc/`, `docker/`, `docker-compose.yml`, `.claude/` và các file `.md` điều hành ở gốc. Các lệnh `npm` dưới đây (trừ khi ghi khác) chạy trong `backend/`; từ gốc có sẵn `npm run dev:api | dev:web | test:api | test:web | typecheck`. Đường dẫn `src/...` trong tài liệu cũ hiểu là `backend/src/...`.
+
+- `docker compose up -d` (chạy ở gốc): bật Postgres 18 dev (DB `salesmind` và `salesmind_test`), cổng **5433** (tránh đụng PostgreSQL cài sẵn trên máy, thường chiếm 5432)
+- `npm run dev`: chạy server, đọc `backend/.env` (sao chép từ `backend/.env.example`)
 - `npm test`: chạy Vitest
 - `npm run typecheck`: kiểm tra kiểu TypeScript
 - `npm run build` / `npm start`: build và chạy bản production; `npm run db:migrate:prod`: migrate bằng bản build

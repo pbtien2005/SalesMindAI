@@ -11,13 +11,16 @@ Kịch bản: [KICH-BAN-DEMO-MVP.md](KICH-BAN-DEMO-MVP.md). Kế hoạch: [PLAN-
 
 ## Chạy
 
+Lệnh `docker compose` chạy ở gốc repo; mọi lệnh `npm` bên dưới chạy trong `backend/`.
+
 ```
 docker compose up -d
+cd backend
 npm install
 npm run db:migrate
 ```
 
-Trong `.env` (sao chép từ `.env.example`) đặt:
+Trong `backend/.env` (sao chép từ `backend/.env.example`) đặt:
 
 ```
 DEMO_MODE=true
