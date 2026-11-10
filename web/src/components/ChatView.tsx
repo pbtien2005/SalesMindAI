@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useConversation, useInbox } from '../api/hooks';
+import { INBOX_STEP, useConversation, useInbox } from '../api/hooks';
 import { useSession } from '../state/session';
 import { ChatPane } from './ChatPane';
 import { CustomerCard } from './CustomerCard';
@@ -11,8 +11,17 @@ import { ProposalBox } from './ProposalBox';
 /** Màn Hội thoại: danh sách | khung chat | Hộp đề xuất và thẻ khách. */
 export function ChatView() {
   const { conversationId, selectConversation } = useSession();
-  const inbox = useInbox();
+  const [pageId, setPageId] = useState('');
+  const [target, setTarget] = useState(INBOX_STEP);
+  const inbox = useInbox(pageId || undefined, target);
   const list = inbox.data?.conversations ?? [];
+  // Các Page đã thấy trong hộp thư (nhớ cả khi đang lọc một Page, để bộ lọc không tự mất lựa chọn).
+  const [knownPages, setKnownPages] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    const add = list.filter((c) => c.pageName && !knownPages.has(c.pageId));
+    if (add.length > 0) setKnownPages((m) => new Map([...m, ...add.map((c) => [c.pageId, c.pageName] as const)]));
+  }, [list, knownPages]);
+  const pageOptions = [...knownPages].map(([id, name]) => ({ id, name }));
 
   // Chưa chọn (hoặc hội thoại đã chọn không còn sau khi đặt lại demo) thì mở hội thoại đầu tiên.
   const effectiveId = list.some((c) => c.id === conversationId) ? conversationId : (list[0]?.id ?? null);
@@ -49,7 +58,20 @@ export function ChatView() {
 
   return (
     <Main title="Hội thoại" className="flex min-h-0">
-      <InboxList conversations={list} now={inbox.data.now} selectedId={effectiveId} onSelect={selectConversation} />
+      <InboxList
+        conversations={list}
+        now={inbox.data.now}
+        selectedId={effectiveId}
+        onSelect={selectConversation}
+        pages={pageOptions}
+        pageId={pageId}
+        onPageChange={(id) => {
+          setPageId(id);
+          setTarget(INBOX_STEP);
+        }}
+        hasMore={inbox.data.hasMore}
+        onLoadMore={() => setTarget((t) => t + INBOX_STEP)}
+      />
       {detail.data ? (
         <>
           {/* key: trạng thái cục bộ (bản nháp, hộp xác nhận) không được rò sang hội thoại khác */}

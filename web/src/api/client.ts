@@ -102,7 +102,13 @@ export const api = {
 
   now: () => get<{ now: string; role: Role; roleName: string }>('/api/now'),
   personas: () => get<{ personas: Persona[] }>('/api/personas'),
-  inbox: () => get<{ now: string; conversations: ConversationSummary[] }>('/api/inbox'),
+  inbox: (q: { pageId?: string; cursor?: string; limit?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (q.pageId) p.set('pageId', q.pageId);
+    if (q.cursor) p.set('cursor', q.cursor);
+    p.set('limit', String(q.limit ?? 100));
+    return get<{ now: string; conversations: ConversationSummary[]; nextCursor: string | null }>(`/api/inbox?${p.toString()}`);
+  },
   home: () => get<HomeData>('/api/home'),
   conversation: (id: string) => get<ConversationDetail>(`/api/conversations/${encodeURIComponent(id)}`),
   history: (id: string) => get<{ history: HistoryEntry[] }>(`/api/conversations/${encodeURIComponent(id)}/history`),

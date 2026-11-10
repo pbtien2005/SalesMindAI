@@ -2,6 +2,8 @@ import type { ConversationDetail, ConversationSummary, Evidence, MessageView, Pr
 
 export const summary = (over: Partial<ConversationSummary> = {}): ConversationSummary => ({
   id: 'c1',
+  pageId: 'page-1',
+  pageName: 'Nội thất Minh Phát',
   displayName: 'Anh Minh',
   lastMessageAt: '2026-11-13T02:28:00.000Z',
   lastMessageText: 'Cuối tuần này mình ghé xem được không?',

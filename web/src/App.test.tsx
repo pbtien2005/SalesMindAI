@@ -45,7 +45,7 @@ function server(over: Partial<{ home: HomeData; conversations: unknown[] }> = {}
     if (custom) return custom;
     if (url === '/api/now') return json({ now: NOW, role: 'sale', roleName: 'Lan' });
     if (url === '/api/home') return json(over.home ?? HOME);
-    if (url === '/api/inbox') return json({ now: NOW, conversations: over.conversations ?? [thu, duc, mai] });
+    if (url.startsWith('/api/inbox')) return json({ now: NOW, conversations: over.conversations ?? [thu, duc, mai] });
     if (url === '/api/personas') return json({ personas: [{ key: 'minh', displayName: 'Facebook: anh Minh' }, { key: 'thu', displayName: 'Chị Thu' }] });
     if (url.startsWith('/api/conversations/')) return json(detail({ summary: thu }));
     if (url === '/api/demo/customer-message') return json({ accepted: true, conversationId: 'c' }, 202);

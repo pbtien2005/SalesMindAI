@@ -72,3 +72,34 @@ describe('InboxList', () => {
     expect(onSelect).toHaveBeenCalledWith('thu');
   });
 });
+
+describe('InboxList nhiều Page', () => {
+  const two = [
+    summary({ id: 'a', displayName: 'Khách A', pageId: 'p1', pageName: 'Page Một' }),
+    summary({ id: 'b', displayName: 'Khách B', pageId: 'p2', pageName: 'Page Hai' }),
+  ];
+  const pages = [{ id: 'p1', name: 'Page Một' }, { id: 'p2', name: 'Page Hai' }];
+
+  it('chỉ hiện bộ lọc Page khi có từ hai Page; mỗi dòng có tên Page; đổi bộ lọc báo lên', async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+    render(<InboxList conversations={two} now={NOW} selectedId={null} onSelect={vi.fn()} pages={pages} pageId="" onPageChange={onPageChange} />);
+    expect(within(screen.getByRole('button', { name: /Khách A/ })).getByText('Page Một')).toBeTruthy();
+    await user.selectOptions(screen.getByLabelText('Page'), 'p2');
+    expect(onPageChange).toHaveBeenCalledWith('p2');
+  });
+
+  it('một Page thì không có bộ lọc và không hiện tên Page trên từng dòng', () => {
+    render(<InboxList conversations={two} now={NOW} selectedId={null} onSelect={vi.fn()} pages={[pages[0]!]} pageId="" onPageChange={vi.fn()} />);
+    expect(screen.queryByLabelText('Page')).toBeNull();
+    expect(screen.queryByText('Page Một')).toBeNull();
+  });
+
+  it('còn hội thoại cũ hơn thì có nút "Tải thêm"', async () => {
+    const user = userEvent.setup();
+    const onLoadMore = vi.fn();
+    render(<InboxList conversations={two} now={NOW} selectedId={null} onSelect={vi.fn()} hasMore onLoadMore={onLoadMore} />);
+    await user.click(screen.getByRole('button', { name: 'Tải thêm hội thoại cũ hơn' }));
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+});

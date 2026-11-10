@@ -50,6 +50,13 @@
       "when": 1794332489799,
       "tag": "0006_broken_lyja",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794333987416,
+      "tag": "0007_mute_ezekiel",
+      "breakpoints": true
     }
   ]
 }

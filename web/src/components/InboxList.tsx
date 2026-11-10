@@ -14,7 +14,7 @@ const norm = (s: string) =>
     .replace(/đ/gi, 'd')
     .toLowerCase();
 
-function Item({ c, now, selected, onSelect }: { c: ConversationSummary; now: string; selected: boolean; onSelect: (id: string) => void }) {
+function Item({ c, now, selected, onSelect, showPage = false }: { c: ConversationSummary; now: string; selected: boolean; onSelect: (id: string) => void; showPage?: boolean }) {
   const waitingForPage = c.waitingOn === 'page';
   const f = c.followup;
   const base = selected ? 'bg-[#eaf0ff] border-l-brand' : c.isP1 ? 'bg-p1-bg border-l-p1' : 'bg-white border-l-transparent hover:bg-[#f7f9fb]';
@@ -43,6 +43,7 @@ function Item({ c, now, selected, onSelect }: { c: ConversationSummary; now: str
         </span>
         <span className="block truncate text-[13px] text-ink-2">{c.lastMessageText ?? 'Chưa có tin nhắn'}</span>
         <span className="mt-1.5 flex flex-wrap gap-1.5">
+          {showPage && c.pageName ? <StatusChip tone="gray">{c.pageName}</StatusChip> : null}
           {c.isP1 ? <StatusChip tone="p1">P1</StatusChip> : null}
           {c.isNew ? <StatusChip tone="blue">Mới</StatusChip> : null}
           {f.suggestStop ? (
@@ -67,11 +68,22 @@ export function InboxList({
   now,
   selectedId,
   onSelect,
+  pages = [],
+  pageId = '',
+  onPageChange,
+  hasMore = false,
+  onLoadMore,
 }: {
   conversations: ConversationSummary[];
   now: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Các Page đã biết. Chỉ hiện bộ lọc Page khi có từ hai Page trở lên. */
+  pages?: Array<{ id: string; name: string }>;
+  pageId?: string;
+  onPageChange?: (id: string) => void;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
@@ -129,6 +141,19 @@ export function InboxList({
             className="grow border-0 bg-transparent text-sm text-ink outline-none"
           />
         </label>
+        {pages.length > 1 && onPageChange ? (
+          <label className="flex items-center gap-2 text-[13px] text-ink-2">
+            <span>Page</span>
+            <select value={pageId} onChange={(e) => onPageChange(e.target.value)} className="h-8 min-w-0 grow rounded-lg border border-line-strong bg-white px-2 text-sm">
+              <option value="">Tất cả Page</option>
+              {pages.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div className="flex flex-wrap gap-1.5">
           {tab('all', 'Tất cả', counts.all)}
           {tab('unanswered', 'Chưa trả lời', counts.unanswered)}
@@ -139,8 +164,15 @@ export function InboxList({
         {shown.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-ink-3">{conversations.length === 0 ? 'Chưa có hội thoại nào.' : 'Không có hội thoại khớp.'}</p>
         ) : (
-          shown.map((c) => <Item key={c.id} c={c} now={now} selected={c.id === selectedId} onSelect={onSelect} />)
+          shown.map((c) => <Item key={c.id} c={c} now={now} selected={c.id === selectedId} onSelect={onSelect} showPage={pages.length > 1} />)
         )}
+        {hasMore && onLoadMore ? (
+          <div className="p-3 text-center">
+            <button type="button" onClick={onLoadMore} className="h-9 rounded-lg border border-line-strong bg-white px-4 text-sm">
+              Tải thêm hội thoại cũ hơn
+            </button>
+          </div>
+        ) : null}
       </div>
     </section>
   );

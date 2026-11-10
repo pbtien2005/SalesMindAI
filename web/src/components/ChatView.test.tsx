@@ -40,7 +40,7 @@ function scene3(): ConversationDetail {
 
 function serve(d: ConversationDetail) {
   return mockFetch((url) => {
-    if (url === '/api/inbox') return json({ now: '2026-11-13T02:45:00.000Z', conversations: [d.summary] });
+    if (url.startsWith('/api/inbox')) return json({ now: '2026-11-13T02:45:00.000Z', conversations: [d.summary] });
     if (url.startsWith('/api/conversations/') && !url.endsWith('stop-followup')) return json(d);
     if (url === '/api/demo/page-message') return json({ accepted: true }, 202);
     if (url.endsWith('stop-followup')) return json({ stopped: true });
@@ -137,7 +137,7 @@ describe('ChatView (cảnh 3)', () => {
     const b = scene3();
     b.summary = { ...b.summary, id: 'c-b', displayName: 'Khách B', lastMessageAt: '2026-11-13T02:00:00.000Z', followup: { count: 2, max: 5, stopped: false, suggestStop: false } };
     const f = mockFetch((url) => {
-      if (url === '/api/inbox') return json({ now: '2026-11-13T02:45:00.000Z', conversations: [a.summary, b.summary] });
+      if (url.startsWith('/api/inbox')) return json({ now: '2026-11-13T02:45:00.000Z', conversations: [a.summary, b.summary] });
       if (url === '/api/conversations/c-a') return json(a);
       if (url === '/api/conversations/c-b') return json(b);
       return json({ error: { code: 'not_found', message: url } }, 404);

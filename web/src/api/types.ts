@@ -35,6 +35,8 @@ export interface FollowupStatus {
 
 export interface ConversationSummary {
   id: string;
+  pageId: string;
+  pageName: string;
   displayName: string;
   lastMessageAt: string | null;
   lastMessageText: string | null;

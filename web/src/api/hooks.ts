@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from './client';
-import type { DecideBody } from './types';
+import type { ConversationSummary, DecideBody } from './types';
 
 /** Giao diện đọc lại dữ liệu mỗi 2 giây (không dùng SSE/WebSocket, xem doc/PLAN-demo-mvp.md). */
 export const POLL_MS = 2000;
@@ -46,7 +46,34 @@ export function useLogout() {
 
 export const useNow = () => useQuery({ queryKey: key('now'), queryFn: api.now, refetchInterval: POLL_MS, retry: shouldRetry });
 export const usePersonas = () => useQuery({ queryKey: ['personas'], queryFn: api.personas, staleTime: Infinity, retry: shouldRetry });
-export const useInbox = () => useQuery({ queryKey: key('inbox'), queryFn: api.inbox, refetchInterval: POLL_MS, retry: shouldRetry });
+/** Số hội thoại tải mỗi lần bấm "Tải thêm". */
+export const INBOX_STEP = 50;
+
+/**
+ * Hộp thư theo trang con trỏ: đọc nối tiếp các trang (tối đa 100 dòng mỗi trang) cho tới khi đủ `target` dòng.
+ * `hasMore` báo còn hội thoại cũ hơn chưa tải.
+ */
+export const useInbox = (pageId?: string, target: number = INBOX_STEP) =>
+  useQuery({
+    queryKey: key('inbox', pageId ?? null, target),
+    queryFn: async () => {
+      const out: ConversationSummary[] = [];
+      let cursor: string | undefined;
+      let now = '';
+      let more = false;
+      do {
+        const r = await api.inbox({ ...(pageId ? { pageId } : {}), ...(cursor ? { cursor } : {}), limit: Math.min(100, target - out.length) });
+        now = r.now;
+        out.push(...r.conversations);
+        cursor = r.nextCursor ?? undefined;
+        more = cursor !== undefined;
+      } while (cursor && out.length < target);
+      return { now, conversations: out, hasMore: more };
+    },
+    refetchInterval: POLL_MS,
+    retry: shouldRetry,
+    placeholderData: (prev) => prev,
+  });
 export const useHome = () => useQuery({ queryKey: key('home'), queryFn: api.home, refetchInterval: POLL_MS, retry: shouldRetry });
 export const useConversation = (id: string | null) =>
   useQuery({

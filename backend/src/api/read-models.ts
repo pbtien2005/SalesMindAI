@@ -6,7 +6,7 @@ import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { conversations, followupState, messages, profileFields, proposals, tasks } from '../db/schema.js';
 import { LIGHT_FIELDS, REVIEW_FIELDS, SIGNAL_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
-import { loadConversationSummaries, type ConversationSummary } from '../followup/overview.js';
+import { loadSummariesFor, type ConversationSummary } from '../followup/overview.js';
 
 const MAX_MESSAGES = 300;
 
@@ -64,10 +64,10 @@ const asView = (p: typeof proposals.$inferSelect): ProposalView => ({
 });
 
 export async function loadConversationDetail(db: Db, tenantId: string, conversationId: string, now: Date): Promise<ConversationDetail | null> {
-  const [conv] = await db.select({ id: conversations.id }).from(conversations).where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId)));
+  const [conv] = await db.select().from(conversations).where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId)));
   if (!conv) return null;
 
-  const summary = (await loadConversationSummaries(db, tenantId, now)).find((s) => s.id === conversationId);
+  const summary = (await loadSummariesFor(db, tenantId, now, [conv]))[0];
   if (!summary) return null;
 
   const rows = await db

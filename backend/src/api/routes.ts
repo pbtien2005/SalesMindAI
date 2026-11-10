@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../db/client.js';
-import { conversations } from '../db/schema.js';
+import { conversations, pages } from '../db/schema.js';
 import type { TokenCrypto } from '../crypto/token-crypto.js';
 import { SimError, simulateCustomerMessage, simulatePageMessage } from '../demo/actions.js';
 import { advanceClock, advanceClockTo } from '../demo/clock.js';
@@ -15,7 +15,8 @@ import { type DemoContext, getDemoContext, resetDemo } from '../demo/seed.js';
 import { PERSONAS, type WebhookPoster } from '../demo/simulator.js';
 import { decideProposal, ProposalError } from '../extraction/proposals.js';
 import { FollowupError, stopFollowup } from '../followup/followup.js';
-import { loadConversationSummaries, loadHome } from '../followup/overview.js';
+import { loadHome } from '../followup/overview.js';
+import { loadInboxPage } from '../followup/inbox.js';
 import { apiError as err, makeRequireAuth, type AuthGuardOptions } from './guard.js';
 import { loadConversationDetail, loadHistory } from './read-models.js';
 import { nowFor } from './scope.js';
@@ -64,10 +65,22 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
 
   app.get('/api/now', async (req) => ({ now: await nowOf(req.auth!.tenantId), role: req.auth!.role, roleName: req.auth!.displayName }));
 
-  app.get('/api/inbox', async (req) => {
+  const inboxQuery = z.object({ pageId: z.string().uuid().optional(), cursor: z.string().max(300).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) });
+  app.get('/api/inbox', async (req, reply) => {
     const tenantId = req.auth!.tenantId;
+    const q = inboxQuery.safeParse(req.query);
+    if (!q.success) return err(reply, 400, 'invalid', 'Tham số hộp thư không hợp lệ.');
+    if (q.data.pageId) {
+      const [own] = await db.select({ id: pages.id }).from(pages).where(and(eq(pages.id, q.data.pageId), eq(pages.tenantId, tenantId)));
+      if (!own) return err(reply, 404, 'not_found', 'Không có Page này.');
+    }
     const now = await nowOf(tenantId);
-    return { now, conversations: await loadConversationSummaries(db, tenantId, now) };
+    try {
+      return { now, ...(await loadInboxPage(db, tenantId, now, q.data)) };
+    } catch (e) {
+      if (e instanceof RangeError) return err(reply, 400, 'invalid_cursor', 'Con trỏ phân trang không hợp lệ.');
+      throw e;
+    }
   });
 
   app.get('/api/home', async (req) => {

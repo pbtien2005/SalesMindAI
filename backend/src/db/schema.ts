@@ -122,6 +122,7 @@ export const conversations = pgTable(
       foreignColumns: [pages.id, pages.tenantId],
     }),
     index('conversations_tenant_idx').on(t.tenantId),
+    index('conversations_tenant_last_message_idx').on(t.tenantId, t.lastMessageAt.desc(), t.id.desc()),
   ],
 );
 

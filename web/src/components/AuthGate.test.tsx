@@ -47,7 +47,7 @@ function server(w: World) {
     }
     if (!w.user) return json({ error: { code: 'unauthenticated', message: 'Chưa đăng nhập.' } }, 401);
     if (url === '/api/home') return w.homeStatus === 200 ? json(HOME) : json({ error: { code: 'unauthenticated', message: 'Hết phiên.' } }, w.homeStatus);
-    if (url === '/api/inbox') return json({ now: NOW, conversations: [summary()] });
+    if (url.startsWith('/api/inbox')) return json({ now: NOW, conversations: [summary()] });
     if (url === '/api/now') return json({ now: NOW, role: w.user.role, roleName: w.user.displayName });
     return json({ error: { code: 'not_found', message: url } }, 404);
   });
@@ -190,7 +190,7 @@ describe('lời mời vào doanh nghiệp', () => {
       }
       if (url === '/api/auth/me') return joined ? json({ user: hung }) : json({ error: { code: 'unauthenticated', message: 'x' } }, 401);
       if (url === '/api/home') return json(HOME);
-      if (url === '/api/inbox') return json({ now: NOW, conversations: [] });
+      if (url.startsWith('/api/inbox')) return json({ now: NOW, conversations: [] });
       return json({ error: { code: 'not_found', message: url } }, 404);
     });
     renderGate();

@@ -7,7 +7,7 @@
  */
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { conversations, followupState, proposals, tasks } from '../db/schema.js';
+import { conversations, followupState, pages, proposals, tasks } from '../db/schema.js';
 import { LIGHT_FIELDS, NEEDS_CLARIFICATION, P1_PURPOSES, REVIEW_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
 import { followupStatus, type FollowupStatus } from './followup.js';
 
@@ -16,6 +16,8 @@ export const P1_WAIT_MINUTES = 15;
 
 export interface ConversationSummary {
   id: string;
+  pageId: string;
+  pageName: string;
   displayName: string;
   lastMessageAt: Date | null;
   lastMessageText: string | null;
@@ -36,20 +38,31 @@ export function fallbackName(psid: string): string {
 
 export async function loadConversationSummaries(db: Db, tenantId: string, now: Date): Promise<ConversationSummary[]> {
   const convs = await db.select().from(conversations).where(eq(conversations.tenantId, tenantId));
+  return summarize(db, tenantId, now, convs);
+}
+
+export type ConversationRow = typeof conversations.$inferSelect;
+
+export const loadSummariesFor = (db: Db, tenantId: string, now: Date, convs: ConversationRow[]) => summarize(db, tenantId, now, convs);
+
+/** Tính tóm tắt cho đúng các hội thoại được đưa vào (mọi truy vấn phụ giới hạn theo các id này). */
+async function summarize(db: Db, tenantId: string, now: Date, convs: ConversationRow[]): Promise<ConversationSummary[]> {
   if (convs.length === 0) return [];
   const ids = convs.map((c) => c.id);
+  const idList = sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `);
+  const pageNames = new Map((await db.select({ id: pages.id, name: pages.name }).from(pages).where(eq(pages.tenantId, tenantId))).map((p) => [p.id, p.name]));
 
-  const stops = await db.select().from(followupState).where(eq(followupState.tenantId, tenantId));
+  const stops = await db.select().from(followupState).where(and(eq(followupState.tenantId, tenantId), inArray(followupState.conversationId, ids)));
   const stoppedAt = new Map(stops.map((s) => [s.conversationId, s.stoppedAt]));
 
   // Tin cuối (mọi chiều) và tin khách cuối có chữ của từng hội thoại.
   const lastAny = await db.execute<{ conversation_id: string; text: string }>(sql`
     SELECT DISTINCT ON (conversation_id) conversation_id, text FROM messages
-    WHERE tenant_id = ${tenantId} AND text IS NOT NULL AND text <> ''
+    WHERE tenant_id = ${tenantId} AND conversation_id IN (${idList}) AND text IS NOT NULL AND text <> ''
     ORDER BY conversation_id, sent_at DESC, id DESC`);
   const lastInbound = await db.execute<{ conversation_id: string; id: string }>(sql`
     SELECT DISTINCT ON (conversation_id) conversation_id, id FROM messages
-    WHERE tenant_id = ${tenantId} AND direction = 'inbound' AND text IS NOT NULL AND text <> ''
+    WHERE tenant_id = ${tenantId} AND conversation_id IN (${idList}) AND direction = 'inbound' AND text IS NOT NULL AND text <> ''
     ORDER BY conversation_id, sent_at DESC, id DESC`);
   const textByConv = new Map(lastAny.rows.map((r) => [r.conversation_id, r.text]));
   const lastInboundId = new Map(lastInbound.rows.map((r) => [r.conversation_id, r.id]));
@@ -84,6 +97,8 @@ export async function loadConversationSummaries(db: Db, tenantId: string, now: D
       const waitingMinutes = waitingSince ? minutesBetween(waitingSince, now) : null;
       return {
         id: c.id,
+        pageId: c.pageId,
+        pageName: pageNames.get(c.pageId) ?? "",
         displayName: c.displayName ?? fallbackName(c.psid),
         lastMessageAt: c.lastMessageAt,
         lastMessageText: textByConv.get(c.id) ?? null,
