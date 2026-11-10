@@ -77,7 +77,30 @@ export function daysOverdue(dueIso: string, nowIso: string): number {
   return Math.round((dayKey(n) - dayKey(d)) / 86_400_000);
 }
 
-const LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+export interface DatePick {
+  label: string;
+  /** Giá trị cho `<input type="datetime-local">`. */
+  local: string;
+}
+
+/**
+ * "Chọn nhanh" cho ô chọn ngày hẹn: Thứ Bảy và Chủ Nhật gần nhất SAU ngày tin được gửi, 10:00.
+ * Chỉ là lối tắt theo lịch, KHÔNG phụ thuộc cụm khách viết (không giải "cuối tuần này" thành ngày) và không bao giờ
+ * được điền sẵn: Sale phải bấm.
+ */
+export function nextWeekendPicks(sentAtIso: string): DatePick[] {
+  const p = vnParts(sentAtIso);
+  if (!p) return [];
+  return [6, 0].map((target) => {
+    const delta = ((target - p.wd + 7) % 7) || 7;
+    const d = new Date(Date.UTC(p.y, p.mo - 1, p.d + delta));
+    const dd = pad(d.getUTCDate());
+    const mm = pad(d.getUTCMonth() + 1);
+    return { label: `${WEEKDAYS[target]} ${dd}/${mm} 10:00`, local: `${d.getUTCFullYear()}-${mm}-${dd}T10:00` };
+  });
+}
+
+const LOCAL_RE =/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 
 /**
  * Giá trị của `<input type="datetime-local">` ("2026-11-14T10:00") -> ISO có offset +07:00

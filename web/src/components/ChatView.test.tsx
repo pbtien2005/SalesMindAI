@@ -1,0 +1,137 @@
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { NEEDS_CLARIFICATION, type ConversationDetail } from '../api/types';
+import { detail, evidenceOf, msg, proposal, summary } from '../test/fixtures';
+import { json, mockFetch, renderApp } from '../test/render';
+import { ChatView } from './ChatView';
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+const T1 = 'Chào shop, mình đang tìm sofa cho phòng khách, màu xám bên shop có mẫu nào không?';
+const T2 = 'Khoảng tầm 15 triệu thôi bạn.';
+const T3 = 'Số mình là 0912 345 678. Cuối tuần này mình ghé xem được không?';
+
+function scene3(): ConversationDetail {
+  return detail({
+    summary: summary({ id: 'c-minh', displayName: 'Minh', followup: { count: 0, max: 5, stopped: false, suggestStop: false } }),
+    messages: [
+      msg('m1', T1, { sentAt: '2026-11-12T02:12:00.000Z' }),
+      msg('m2', 'Dạ chào anh, bên em có mẫu sofa góc Oslo màu xám ạ.', { direction: 'outbound', senderKind: 'page_inbox', sentAt: '2026-11-12T02:15:00.000Z' }),
+      msg('m3', T2, { sentAt: '2026-11-12T02:20:00.000Z' }),
+      msg('m4', T3, { sentAt: '2026-11-13T02:40:00.000Z' }),
+    ],
+    autoFill: [
+      proposal({ id: 'a1', field: 'product_interest', value: { text: 'Sofa phòng khách, màu xám' }, evidence: [evidenceOf('m1', T1, 'phòng khách, màu xám')] }),
+      proposal({ id: 'a2', field: 'budget', value: { text: '15 triệu' }, evidence: [evidenceOf('m3', T2, 'tầm 15 triệu')] }),
+    ],
+    box: [
+      { kind: 'proposal', ...proposal({ id: 'b1', field: 'phone', value: { text: '0912 345 678' }, evidence: [evidenceOf('m4', T3, '0912 345 678')] }) },
+      {
+        kind: 'proposal',
+        ...proposal({ id: 'b2', field: 'timeline', value: { text: 'cuối tuần này', kind: 'vague', sentAt: '2026-11-13T02:40:00.000Z' }, evidence: [evidenceOf('m4', T3, 'Cuối tuần này')], flags: [NEEDS_CLARIFICATION] }),
+      },
+    ],
+  });
+}
+
+function serve(d: ConversationDetail) {
+  return mockFetch((url) => {
+    if (url === '/api/inbox') return json({ now: '2026-11-13T02:45:00.000Z', conversations: [d.summary] });
+    if (url.startsWith('/api/conversations/') && !url.endsWith('stop-followup')) return json(d);
+    if (url === '/api/demo/page-message') return json({ accepted: true }, 202);
+    if (url.endsWith('stop-followup')) return json({ stopped: true });
+    return json({ error: { code: 'not_found', message: url } }, 404);
+  });
+}
+
+describe('ChatView (cảnh 3)', () => {
+  it('mở hội thoại đầu tiên và tô câu gốc trong tin của khách', async () => {
+    serve(scene3());
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Minh' });
+    const chat = screen.getByRole('region', { name: 'Cuộc trò chuyện' });
+    const marks = Array.from(chat.querySelectorAll('mark')).map((m) => m.textContent);
+    expect(marks).toEqual(['phòng khách, màu xám', 'tầm 15 triệu', '0912 345 678', 'Cuối tuần này']);
+  });
+
+  it('tin do Lan gõ ở Page Inbox có nhãn Page Inbox và không bị tô', async () => {
+    serve(scene3());
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Minh' });
+    const chat = screen.getByRole('region', { name: 'Cuộc trò chuyện' });
+    expect(within(chat).getByText('Page Inbox')).toBeTruthy();
+    expect(within(chat).queryAllByText('Khách, 09:12').length).toBe(1);
+  });
+
+  it('thẻ khách: trường nhẹ "AI điền, chưa duyệt", SĐT chờ duyệt, ngày hẹn "Cần xác nhận"', async () => {
+    serve(scene3());
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Minh' });
+    const card = screen.getByRole('heading', { name: 'Thẻ khách' }).parentElement as HTMLElement;
+    expect(within(card).getByText('Sofa phòng khách, màu xám')).toBeTruthy();
+    expect(within(card).getByText('15 triệu')).toBeTruthy();
+    expect(within(card).getAllByText('AI điền, chưa duyệt').length).toBe(2);
+    expect(within(card).getByText('Chưa có, đang chờ duyệt đề xuất')).toBeTruthy();
+    expect(within(card).getByText('Cần xác nhận')).toBeTruthy();
+    expect(within(card).getByText('Chưa có ngày')).toBeTruthy();
+    expect(within(card).getAllByText('Thiếu')).toHaveLength(3); // tên, số lượng, địa chỉ còn thiếu
+  });
+
+  it('Hộp đề xuất có 2 mục và nút Duyệt mốc hẹn đang khóa', async () => {
+    serve(scene3());
+    renderApp(<ChatView />);
+    expect(await screen.findByText('2 chờ duyệt')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Duyệt (chọn ngày trước)' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('Lan gõ tin giả lập: gọi page-message rồi xóa ô nhập', async () => {
+    const f = serve(scene3());
+    const user = userEvent.setup();
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Minh' });
+    const input = screen.getByLabelText('Tin trả lời của Lan (giả lập Page Inbox)') as HTMLInputElement;
+    await user.type(input, 'Dạ vâng ạ');
+    await user.click(screen.getByRole('button', { name: 'Gửi (giả lập)' }));
+    await waitFor(() => expect(f.posts()).toHaveLength(1));
+    expect(f.posts()[0]?.url).toBe('/api/demo/page-message');
+    expect(f.body(0)).toEqual({ conversationId: 'c-minh', text: 'Dạ vâng ạ' });
+    await waitFor(() => expect(input.value).toBe(''));
+  });
+
+  it('nút Gửi khóa khi ô nhập rỗng hoặc chỉ có khoảng trắng', async () => {
+    serve(scene3());
+    const user = userEvent.setup();
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Minh' });
+    const send = screen.getByRole('button', { name: 'Gửi (giả lập)' }) as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    await user.type(screen.getByLabelText('Tin trả lời của Lan (giả lập Page Inbox)'), '   ');
+    expect(send.disabled).toBe(true);
+  });
+
+  it('hiện "Chưa ai trả lời" khi khách đang chờ Page', async () => {
+    const d = scene3();
+    d.summary = { ...d.summary, waitingOn: 'page', waitingMinutes: 8 };
+    serve(d);
+    renderApp(<ChatView />);
+    expect((await screen.findByRole('status')).textContent).toBe('Chưa ai trả lời 8 phút');
+  });
+
+  it('không có dữ liệu demo (409): hướng dẫn chạy demo:reset', async () => {
+    mockFetch(() => json({ error: { code: 'no_demo_data', message: 'Chưa có dữ liệu demo. Chạy: npm run cli -- demo:reset' } }, 409));
+    renderApp(<ChatView />);
+    expect(await screen.findByText('Chưa có dữ liệu demo')).toBeTruthy();
+    expect(screen.getByText(/demo:reset/, { selector: 'div.mt-2' })).toBeTruthy();
+  });
+
+  it('hộp thư rỗng', async () => {
+    mockFetch(() => json({ now: '2026-11-13T02:45:00.000Z', conversations: [] }));
+    renderApp(<ChatView />);
+    expect(await screen.findByText('Chưa có hội thoại nào.')).toBeTruthy();
+    expect(screen.getByText('Khi có khách nhắn tới, cuộc trò chuyện sẽ hiện ở đây.')).toBeTruthy();
+  });
+});

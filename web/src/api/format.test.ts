@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daysOverdue, formatDateTime, formatDay, formatInboxTime, formatTime, formatWait, toIsoWithOffset, toLocalInput } from './format';
+import { daysOverdue, formatDateTime, formatDay, formatInboxTime, formatTime, formatWait, nextWeekendPicks, toIsoWithOffset, toLocalInput } from './format';
 
 // Kịch bản demo: Thứ Năm 12/11/2026 09:00 giờ VN = 02:00Z.
 const THU_0900 = '2026-11-12T02:00:00.000Z';
@@ -46,6 +46,32 @@ describe('định dạng thời gian theo giờ Việt Nam', () => {
     expect(daysOverdue('2026-11-09T08:00:00Z', THU_0900)).toBe(3);
     expect(daysOverdue('2026-11-11T10:00:00Z', THU_0900)).toBe(1);
     expect(daysOverdue('2026-11-14T03:00:00Z', THU_0900)).toBe(-2);
+  });
+});
+
+describe('nextWeekendPicks (chọn nhanh, không điền sẵn)', () => {
+  it('tin gửi Thứ Sáu 13/11 -> Thứ Bảy 14/11 và Chủ Nhật 15/11 lúc 10:00', () => {
+    expect(nextWeekendPicks(FRI_0930)).toEqual([
+      { label: 'Thứ Bảy 14/11 10:00', local: '2026-11-14T10:00' },
+      { label: 'Chủ Nhật 15/11 10:00', local: '2026-11-15T10:00' },
+    ]);
+  });
+
+  it('tin gửi đúng Thứ Bảy thì lấy Thứ Bảy tuần sau (luôn SAU ngày gửi)', () => {
+    expect(nextWeekendPicks('2026-11-14T03:00:00Z')[0]?.local).toBe('2026-11-21T10:00');
+    expect(nextWeekendPicks('2026-11-14T03:00:00Z')[1]?.local).toBe('2026-11-15T10:00');
+  });
+
+  it('qua tháng và qua năm', () => {
+    expect(nextWeekendPicks('2026-12-30T03:00:00Z').map((p) => p.local)).toEqual(['2027-01-02T10:00', '2027-01-03T10:00']);
+  });
+
+  it('thời điểm sai trả mảng rỗng', () => {
+    expect(nextWeekendPicks('???')).toEqual([]);
+  });
+
+  it('kết quả đi qua toIsoWithOffset thành ISO hợp lệ', () => {
+    expect(toIsoWithOffset(nextWeekendPicks(FRI_0930)[0]!.local)).toBe('2026-11-14T10:00:00+07:00');
   });
 });
 
