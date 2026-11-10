@@ -174,18 +174,27 @@ export const oauthRoutes: FastifyPluginAsync<OAuthRouteOptions> = async (app, op
         },
         consumed.tenantId,
         long,
+        consumed.userId,
       );
       req.log.info({ pages: outcomes.length, connected: outcomes.filter((o) => o.status === 'connected').length }, 'đã kết nối Page');
+      // Liên kết do người dùng tạo trong giao diện: chuyển về giao diện kèm số liệu (không kèm thông báo thô).
+      if (consumed.userId) {
+        const n = (st: PageOutcome['status']) => outcomes.filter((o) => o.status === st).length;
+        const failed = n('subscribe_failed') + n('save_failed');
+        return reply.header('cache-control', 'no-store').redirect(`${opts.publicBaseUrl}/?connected=${n('connected')}&skipped=${n('owned_by_other_tenant')}&failed=${failed}`, 302);
+      }
       const s = summarize(outcomes);
       return html(reply, 200, s.title, s.body);
     } catch (err) {
       if (err instanceof GraphApiError) {
         // Thông báo của GraphApiError đã được loại token và secret.
         req.log.warn({ httpStatus: err.httpStatus, code: err.code, type: err.type }, 'lỗi khi kết nối Page với Facebook');
+        if (consumed.userId) return reply.redirect(`${opts.publicBaseUrl}/?connect_error=facebook`, 302);
         return html(reply, 502, 'Không kết nối được với Facebook', '<p>Facebook từ chối hoặc không phản hồi.</p>' + retryHint);
       }
       // Lỗi hệ thống (DB...): vẫn trả trang HTML dễ hiểu thay vì JSON trống. Không đưa chi tiết lỗi ra ngoài.
       req.log.error({ err }, 'lỗi hệ thống khi kết nối Page');
+      if (consumed.userId) return reply.redirect(`${opts.publicBaseUrl}/?connect_error=system`, 302);
       return html(reply, 500, 'Có lỗi hệ thống', '<p>Chưa kết nối được. Vui lòng thử lại sau.</p>' + retryHint);
     }
   });

@@ -328,8 +328,16 @@ export class GraphClient {
     }
   }
 
+  /** Ngừng nhận webhook của Page cho app này (`DELETE /{page-id}/subscribed_apps`). */
+  async unsubscribePage(fbPageId: string, pageToken: string): Promise<void> {
+    const body = await this.#request('DELETE', `${encodeURIComponent(fbPageId)}/subscribed_apps`, { params: {}, accessToken: pageToken });
+    if (!z.object({ success: z.literal(true) }).safeParse(body).success) {
+      throw new GraphApiError('Meta không xác nhận việc hủy đăng ký webhook cho Page.', 200, null, null, null);
+    }
+  }
+
   async #request(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'DELETE',
     path: string,
     req: { params: Record<string, string>; accessToken?: string; secrets?: string[] },
   ): Promise<unknown> {
@@ -340,7 +348,7 @@ export class GraphClient {
     }
     const url = new URL(`${GRAPH_HOST}/${this.#opts.apiVersion}/${path}`);
     const init: RequestInit = { method, signal: AbortSignal.timeout(this.#opts.timeoutMs) };
-    if (method === 'GET') {
+    if (method === 'GET' || method === 'DELETE') {
       url.search = params.toString();
     } else {
       init.body = params;

@@ -29,6 +29,8 @@ export interface ProcessStats extends ParseStats {
    * ghi cảnh báo, KHÔNG retry: mất một lượt thả cảm xúc không đáng làm đầy dead-letter, khác với mất tin nhắn.
    */
   unknownPageOther: number;
+  /** Sự kiện tới Page đã NGẮT KẾT NỐI: bỏ có chủ ý (đếm, không lưu, không retry). */
+  disconnected: number;
   /** Sự kiện chính sách mới được lưu. */
   policyStored: number;
 }
@@ -76,7 +78,7 @@ export async function processWebhookPayload(
 ): Promise<ProcessStats> {
   const sender = opts.sender ?? DEFAULT_SENDER_CONFIG;
   const parsed = parseWebhookPayload(payload);
-  const stats: ProcessStats = { ...parsed.stats, stored: 0, duplicates: 0, unknownPage: 0, unknownPageOther: 0, policyStored: 0 };
+  const stats: ProcessStats = { ...parsed.stats, stored: 0, duplicates: 0, unknownPage: 0, unknownPageOther: 0, disconnected: 0, policyStored: 0 };
   // Chỉ gồm sự kiện chính sách MỚI thật sự và chỉ ghi log SAU khi transaction thành công (không lặp khi retry).
   let newPolicy: PolicyEventItem[] = [];
   let customerConversations: string[] = [];
@@ -92,17 +94,19 @@ export async function processWebhookPayload(
   if (fbPageIds.length > 0) {
     await db.transaction(async (tx) => {
       const known = await tx
-        .select({ id: pages.id, tenantId: pages.tenantId, fbPageId: pages.fbPageId })
+        .select({ id: pages.id, tenantId: pages.tenantId, fbPageId: pages.fbPageId, status: pages.status })
         .from(pages)
         .where(inArray(pages.fbPageId, fbPageIds));
-      const byFbId = new Map(known.map((p) => [p.fbPageId, { id: p.id, tenantId: p.tenantId }]));
+      const byFbId = new Map(known.filter((p) => p.status !== 'disconnected').map((p) => [p.fbPageId, { id: p.id, tenantId: p.tenantId }]));
+      const dropped = new Set(known.filter((p) => p.status === 'disconnected').map((p) => p.fbPageId));
 
       // `parsed.messages` đã sắp theo timestamp: giữ nguyên thứ tự đó.
       const items: StoreItem[] = [];
       for (const m of parsed.messages) {
         const page = byFbId.get(m.fbPageId);
         if (!page) {
-          stats.unknownPage += 1;
+          if (dropped.has(m.fbPageId)) stats.disconnected += 1;
+          else stats.unknownPage += 1;
           continue;
         }
         items.push({
@@ -115,15 +119,19 @@ export async function processWebhookPayload(
       const interactions: InteractionItem[] = [];
       for (const i of parsed.interactions) {
         const page = byFbId.get(i.fbPageId);
-        if (!page) stats.unknownPageOther += 1;
-        else interactions.push({ page, psid: i.psid, atMs: i.atMs });
+        if (!page) {
+          if (dropped.has(i.fbPageId)) stats.disconnected += 1;
+          else stats.unknownPageOther += 1;
+        } else interactions.push({ page, psid: i.psid, atMs: i.atMs });
       }
 
       const policy: PolicyEventItem[] = [];
       for (const p of parsed.policyEvents) {
         const page = byFbId.get(p.fbPageId);
-        if (!page) stats.unknownPageOther += 1;
-        else policy.push({ page, event: p });
+        if (!page) {
+          if (dropped.has(p.fbPageId)) stats.disconnected += 1;
+          else stats.unknownPageOther += 1;
+        } else policy.push({ page, event: p });
       }
 
       const r = await storeInbound(tx, items, 'webhook', { interactions });

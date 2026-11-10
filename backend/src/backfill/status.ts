@@ -7,7 +7,7 @@ export interface BackfillOverviewRow {
   fbPageId: string;
   name: string;
   /** Sức khỏe của token (`active` hoặc `token_invalid`). */
-  status: 'active' | 'token_invalid';
+  status: 'active' | 'token_invalid' | 'disconnected';
   state: BackfillState | null;
   /** Số tin đã lưu từ backfill của Page này. */
   stored: number;

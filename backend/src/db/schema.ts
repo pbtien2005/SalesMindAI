@@ -20,7 +20,7 @@ import {
 const id = () => uuid('id').primaryKey().default(sql`uuidv7()`);
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 
-export const pageStatus = pgEnum('page_status', ['active', 'token_invalid']);
+export const pageStatus = pgEnum('page_status', ['active', 'token_invalid', 'disconnected']);
 export const messageSource = pgEnum('message_source', ['webhook', 'backfill']);
 /** Hướng của tin: từ khách tới Page, hay từ Page tới khách (echo, hoặc tin Page gửi lấy qua backfill). */
 export const messageDirection = pgEnum('message_direction', ['inbound', 'outbound']);
@@ -78,6 +78,8 @@ export const pages = pgTable(
     status: pageStatus('status').notNull().default('active'),
     /** Lúc đăng ký webhook thành công. Null nghĩa là CHƯA chắc nhận được tin của Page này. */
     subscribedAt: timestamp('subscribed_at', { withTimezone: true }),
+    /** Người (SalesMind) đã bấm kết nối Page này; null nếu kết nối bằng CLI. */
+    connectedByUserId: uuid('connected_by_user_id').references(() => users.id, { onDelete: 'set null' }),
     /** Con trỏ để chạy lại backfill từ chỗ dừng (mốc 5). */
     backfillState: jsonb('backfill_state'),
     createdAt: createdAt(),
@@ -203,6 +205,8 @@ export const oauthStates = pgTable(
      * trình duyệt đã mở liên kết, nếu không người khác có state là gắn được Page của họ vào tenant.
      */
     nonceHash: text('nonce_hash'),
+    /** Người bấm "Kết nối Page" trong giao diện; null nếu liên kết do CLI tạo. */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id),

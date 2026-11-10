@@ -27,7 +27,7 @@ describe('OAuth state (dùng một lần, gắn với trình duyệt)', () => {
     const { tenant, state } = await freshState();
     const nonce = newNonce();
     expect(await claimOAuthState(db, state, nonce)).toBe(true);
-    expect(await consumeOAuthState(db, state, nonce)).toEqual({ tenantId: tenant.id });
+    expect(await consumeOAuthState(db, state, nonce)).toEqual({ tenantId: tenant.id, userId: null });
     expect(await consumeOAuthState(db, state, nonce)).toBeNull();
     expect(await claimOAuthState(db, state, nonce)).toBe(false); // đã dùng thì không nhận lại được
   });
@@ -65,7 +65,7 @@ describe('OAuth state (dùng một lần, gắn với trình duyệt)', () => {
     const nonce = newNonce();
     await claimOAuthState(db, state, nonce);
     expect(await consumeOAuthState(db, state, newNonce())).toBeNull();
-    expect(await consumeOAuthState(db, state, nonce)).toEqual({ tenantId: tenant.id });
+    expect(await consumeOAuthState(db, state, nonce)).toEqual({ tenantId: tenant.id, userId: null });
   });
 
   it('trình duyệt thứ hai có state nhưng khác nonce: không nhận được (chống chiếm luồng bằng state bị lộ)', async () => {
@@ -153,7 +153,7 @@ describe('tenant và liên kết kết nối (CLI)', () => {
     const state = url.searchParams.get('state')!;
     const nonce = newNonce();
     expect(await claimOAuthState(db, state, nonce)).toBe(true);
-    expect(await consumeOAuthState(db, state, nonce)).toEqual({ tenantId: t.id });
+    expect(await consumeOAuthState(db, state, nonce)).toEqual({ tenantId: t.id, userId: null });
   });
 
   it('tenantExists và listTenants (kèm số Page)', async () => {

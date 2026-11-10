@@ -21,6 +21,12 @@ const ITEMS: Array<{ view: View; label: string; icon: ReactNode; roles?: Role[] 
     ),
   },
   {
+    view: 'pages',
+    label: 'Page Facebook',
+    roles: ['owner', 'manager'],
+    icon: icon(<path d="M4 4h16v12H8l-4 4V4z" />),
+  },
+  {
     view: 'team',
     label: 'Đội',
     roles: ['owner', 'manager'],

@@ -62,7 +62,7 @@ export const useHistory = (id: string | null) =>
 /** Sau mọi thao tác ghi, làm mới toàn bộ dữ liệu đọc (đồng hồ, hộp thư, Trang chủ, hội thoại). */
 function useRefreshAll() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'personas' && q.queryKey[0] !== 'team' && q.queryKey[0] !== 'me' && q.queryKey[0] !== 'authConfig' });
+  return () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'personas' && q.queryKey[0] !== 'team' && q.queryKey[0] !== 'pages' && q.queryKey[0] !== 'me' && q.queryKey[0] !== 'authConfig' });
 }
 
 export function useAdvanceClock() {
@@ -120,3 +120,12 @@ export const useCreateInvite = () => useTeamMutation((v: { role: string; email?:
 export const useRevokeInvite = () => useTeamMutation((id: string) => api.revokeInvite(id));
 export const useSetRole = () => useTeamMutation((v: { userId: string; role: string }) => api.setRole(v.userId, v.role));
 export const useRemoveMember = () => useTeamMutation((userId: string) => api.removeMember(userId));
+
+export const usePages = () => useQuery({ queryKey: ['pages'], queryFn: api.pages, retry: shouldRetry, refetchInterval: POLL_MS });
+export const useConnectUrl = () => useMutation({ mutationFn: () => api.connectUrl() });
+function usePagesMutation<V, R>(fn: (v: V) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: ['pages'] }) });
+}
+export const useDisconnectPage = () => usePagesMutation((id: string) => api.disconnectPage(id));
+export const useBackfillPage = () => usePagesMutation((id: string) => api.backfillPage(id));

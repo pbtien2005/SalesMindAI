@@ -40,6 +40,7 @@ interface Tenant {
   proposalId: string;
   userId: string;
   inviteId: string;
+  pageId: string;
   cookie: string;
   name: string;
 }
@@ -70,7 +71,7 @@ async function seedTenant(name: string, email: string): Promise<Tenant> {
   await db.insert(tasks).values({ tenantId, conversationId: c!.id, title: `Việc của ${name}`, dueAt: new Date('2026-11-01T00:00:00Z') });
   const login = await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { email, password: PASSWORD } });
   const cookie = String(([] as string[]).concat(login.headers['set-cookie'] as string | string[])[0]).split(';')[0]!;
-  return { tenantId, conversationId: c!.id, proposalId: pr!.id, userId, inviteId: inv.id, cookie, name };
+  return { tenantId, conversationId: c!.id, proposalId: pr!.id, userId, inviteId: inv.id, pageId: p!.id, cookie, name };
 }
 
 let A: Tenant;
@@ -102,6 +103,8 @@ const CASES: Record<string, (b: Tenant) => { method: Method; url: string; body?:
   'POST /api/team/invites/:id/revoke': (b) => ({ method: 'POST', url: `/api/team/invites/${b.inviteId}/revoke` }),
   'PATCH /api/team/members/:userId': (b) => ({ method: 'PATCH', url: `/api/team/members/${b.userId}`, body: { role: 'sale' } }),
   'DELETE /api/team/members/:userId': (b) => ({ method: 'DELETE', url: `/api/team/members/${b.userId}` }),
+  'POST /api/pages/:id/disconnect': (b) => ({ method: 'POST', url: `/api/pages/${b.pageId}/disconnect` }),
+  'POST /api/pages/:id/backfill': (b) => ({ method: 'POST', url: `/api/pages/${b.pageId}/backfill` }),
   'POST /api/proposals/:id/decide': (b) => ({ method: 'POST', url: `/api/proposals/${b.proposalId}/decide`, body: { action: 'dismiss' } }),
 };
 
@@ -133,8 +136,8 @@ describe('cách ly dữ liệu giữa hai doanh nghiệp', () => {
       // Đối chứng: chính chủ gọi được (không phải 404 chung chung vì route hỏng).
       const own = build(A);
       const ok = await as(A, own.method, own.url, own.body);
-      expect([200, 409]).toContain(ok.statusCode);
-      if (key.startsWith('DELETE')) return; // chính chủ tự gỡ mình là owner/manager cuối: không kiểm tiếp
+      expect([200, 409, 503]).toContain(ok.statusCode);
+      if (key.startsWith('DELETE') || key.includes('/disconnect')) return; // chính chủ tự gỡ mình là owner/manager cuối: không kiểm tiếp
     });
   }
 

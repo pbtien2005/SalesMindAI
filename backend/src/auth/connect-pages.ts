@@ -36,7 +36,7 @@ export interface ConnectDeps {
  * đăng ký webhook đã thành công hay chưa. Một Page 'active' mà `subscribedAt` null thì chưa chắc
  * nhận được tin.
  */
-export async function connectPages(deps: ConnectDeps, tenantId: string, userToken: string): Promise<PageOutcome[]> {
+export async function connectPages(deps: ConnectDeps, tenantId: string, userToken: string, connectedByUserId: string | null = null): Promise<PageOutcome[]> {
   const { db, graph, crypto } = deps;
   const fbPages = await graph.listPages(userToken);
   const outcomes: PageOutcome[] = [];
@@ -49,12 +49,12 @@ export async function connectPages(deps: ConnectDeps, tenantId: string, userToke
       // WHERE không khớp, không dòng nào bị đổi và RETURNING rỗng.
       const [saved] = await db
         .insert(pages)
-        .values({ tenantId, fbPageId: p.id, name: p.name, tokenEnc, status: 'active' })
+        .values({ tenantId, fbPageId: p.id, name: p.name, tokenEnc, status: 'active', connectedByUserId })
         .onConflictDoUpdate({
           target: pages.fbPageId,
           // subscribedAt về null: đăng ký webhook phải được xác lập lại ở lần này; nếu thất bại thì không được
           // giữ mốc thời gian của lần trước (nó sẽ nói dối rằng Page đang nhận được tin).
-          set: { name: p.name, tokenEnc, status: 'active', subscribedAt: null },
+          set: { name: p.name, tokenEnc, status: 'active', subscribedAt: null, ...(connectedByUserId ? { connectedByUserId } : {}) },
           setWhere: eq(pages.tenantId, tenantId),
         })
         .returning({ id: pages.id });

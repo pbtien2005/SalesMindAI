@@ -198,3 +198,20 @@ export interface InviteInfo {
   role: Role;
   email: string | null;
 }
+
+export interface PageView {
+  id: string;
+  fbPageId: string;
+  name: string;
+  status: 'active' | 'token_invalid' | 'disconnected';
+  webhookSubscribed: boolean;
+  conversations: number;
+  lastMessageAt: string | null;
+  connectedBy: string | null;
+}
+export interface PagesData {
+  pages: PageView[];
+  aiEnabled: boolean;
+  /** Máy chủ đã có FB_APP_ID và APP_SECRET thật. */
+  facebookConfigured: boolean;
+}

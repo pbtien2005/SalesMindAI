@@ -30,7 +30,7 @@ export interface AppDeps {
    * Có thì bật API demo `/api/*` (KHÔNG có đăng nhập; chỉ dùng khi DEMO_MODE=true, xem `src/api/routes.ts`).
    * `appSecret` dùng chung với webhook để ký tin giả lập.
    */
-  api?: Pick<ApiOptions, 'db' | 'crypto' | 'log' | 'demoMode'>;
+  api?: Pick<ApiOptions, 'db' | 'crypto' | 'log' | 'demoMode' | 'facebook'>;
   /** Có thì bật tài khoản: `/api/auth/*`, cookie phiên và chống CSRF cho mọi `/api/*`. */
   auth?: AuthRouteOptions;
   /** Thư mục bản build của `web/`. Có `index.html` thì backend phục vụ luôn giao diện (cùng origin). */

@@ -24,12 +24,14 @@ export async function createOAuthState(
   db: Db,
   tenantId: string,
   ttlSeconds: number = STATE_TTL_SECONDS,
+  userId?: string,
 ): Promise<string> {
   await db.delete(oauthStates).where(lt(oauthStates.expiresAt, sql`now() - interval '1 day'`));
   const state = randomBytes(32).toString('base64url');
   await db.insert(oauthStates).values({
     stateHash: hash(state),
     tenantId,
+    ...(userId ? { userId } : {}),
     expiresAt: sql`now() + ${ttlSeconds} * interval '1 second'`,
   });
   return state;
@@ -58,11 +60,11 @@ export async function consumeOAuthState(
   db: Db,
   state: string,
   nonce: string,
-): Promise<{ tenantId: string } | null> {
+): Promise<{ tenantId: string; userId: string | null } | null> {
   const rows = await db
     .update(oauthStates)
     .set({ usedAt: sql`now()` })
     .where(and(usable(state), eq(oauthStates.nonceHash, hash(nonce))))
-    .returning({ tenantId: oauthStates.tenantId });
+    .returning({ tenantId: oauthStates.tenantId, userId: oauthStates.userId });
   return rows[0] ?? null;
 }

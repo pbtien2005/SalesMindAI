@@ -43,6 +43,13 @@
       "when": 1794331846317,
       "tag": "0005_daily_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794332489799,
+      "tag": "0006_broken_lyja",
+      "breakpoints": true
     }
   ]
 }

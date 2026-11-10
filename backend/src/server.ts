@@ -66,7 +66,7 @@ const app = buildApp(
       session: { idleDays: env.SESSION_IDLE_DAYS, maxDays: env.SESSION_MAX_DAYS },
     },
     // API demo chỉ tồn tại khi DEMO_MODE=true (không có đăng nhập).
-    api: { db: dbHandle.db, crypto, demoMode: env.DEMO_MODE, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } },
+    api: { db: dbHandle.db, crypto, demoMode: env.DEMO_MODE, facebook: { facebookConfigured: !/^changeme/i.test(env.FB_APP_ID) && !/^changeme/i.test(env.APP_SECRET), graph, backfill: createBackfillQueue(boss) }, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } },
   },
 );
 

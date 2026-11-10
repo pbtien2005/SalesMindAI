@@ -20,6 +20,7 @@ import { apiError as err, makeRequireAuth, type AuthGuardOptions } from './guard
 import { loadConversationDetail, loadHistory } from './read-models.js';
 import { nowFor } from './scope.js';
 import { teamRoutes } from './team.js';
+import { pageRoutes, type PageRouteOptions } from './pages.js';
 import type { Mailer } from '../auth/mailer.js';
 
 export interface ApiOptions {
@@ -34,6 +35,8 @@ export interface ApiOptions {
   guard: AuthGuardOptions;
   mailer: Mailer;
   publicBaseUrl: string;
+  /** Kết nối Page Facebook (chưa cấu hình thì các route kết nối trả 503). */
+  facebook?: Pick<PageRouteOptions, 'facebookConfigured' | 'graph' | 'backfill'>;
 }
 
 const uuid = z.string().uuid();
@@ -56,6 +59,7 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
   app.addHook('preHandler', makeRequireAuth(opts.guard));
 
   const nowOf = (tenantId: string) => nowFor(db, tenantId, opts.demoMode);
+  await app.register(pageRoutes, { db, crypto: opts.crypto, publicBaseUrl: opts.publicBaseUrl, facebookConfigured: opts.facebook?.facebookConfigured ?? false, ...(opts.facebook?.graph ? { graph: opts.facebook.graph } : {}), ...(opts.facebook?.backfill ? { backfill: opts.facebook.backfill } : {}) });
   await app.register(teamRoutes, { db, mailer: opts.mailer, publicBaseUrl: opts.publicBaseUrl, now: opts.guard.now ?? (() => new Date()) });
 
   app.get('/api/now', async (req) => ({ now: await nowOf(req.auth!.tenantId), role: req.auth!.role, roleName: req.auth!.displayName }));

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { Me, Role } from '../api/types';
 
-export type View = 'chat' | 'home' | 'team';
+export type View = 'chat' | 'home' | 'team' | 'pages';
 
 interface Session {
   /** Người đang đăng nhập (từ `GET /api/auth/me`). */
@@ -23,7 +23,8 @@ interface Session {
 const Ctx = createContext<Session | null>(null);
 
 export function SessionProvider({ me, children }: { me: Me; children: ReactNode }) {
-  const [view, setView] = useState<View>('home');
+  // Quay về từ Facebook (/?connected=… hoặc /?connect_error=…) thì mở thẳng màn Page.
+  const [view, setView] = useState<View>(() => (/[?&](connected|connect_error)=/.test(window.location.search) ? 'pages' : 'home'));
   const [conversationId, selectConversation] = useState<string | null>(null);
 
   const openConversation = useCallback((id: string) => {
