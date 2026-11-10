@@ -116,6 +116,25 @@ describe('Trang chủ (cảnh 0)', () => {
   });
 });
 
+describe('Trợ năng cơ bản', () => {
+  it('có liên kết bỏ qua tới nội dung chính và vùng main khớp', async () => {
+    server();
+    renderApp(<App />);
+    await screen.findByRole('heading', { name: 'Trang chủ của Lan' });
+    const skip = screen.getByRole('link', { name: 'Bỏ qua tới nội dung chính' });
+    expect(skip.getAttribute('href')).toBe('#main');
+    expect(screen.getByRole('main').id).toBe('main');
+  });
+
+  it('nút điều hướng chỉ trang hiện tại bằng aria-current', async () => {
+    server();
+    renderApp(<App />);
+    await screen.findByRole('heading', { name: 'Trang chủ của Lan' });
+    expect(screen.getByRole('button', { name: 'Trang chủ' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('button', { name: 'Hội thoại' }).getAttribute('aria-current')).toBeNull();
+  });
+});
+
 describe('Trang chủ (cảnh 6): chị Hà và số liệu AI', () => {
   it('đổi sang chị Hà: tiêu đề đổi, request mang header ha, hiện 4 số liệu AI', async () => {
     const f = server();
@@ -155,6 +174,24 @@ describe('Bảng Giả lập', () => {
     const again = await screen.findByRole('complementary', { name: 'Bảng Giả lập' });
     await user.type(within(again).getByLabelText('Nội dung tin', { selector: '#sim-customer-text' }), '{Escape}');
     expect(screen.queryByRole('complementary', { name: 'Bảng Giả lập' })).toBeNull();
+  });
+
+  it('mở thì focus vào bảng, đóng bằng Esc thì focus về nút Giả lập', async () => {
+    server();
+    const { panel } = await open();
+    expect(document.activeElement).toBe(panel);
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('complementary', { name: 'Bảng Giả lập' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Giả lập' }));
+  });
+
+  it('Esc trong danh sách chọn không đóng cả bảng', async () => {
+    server();
+    const { panel } = await open();
+    const select = within(panel).getByLabelText('Khách');
+    select.focus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('complementary', { name: 'Bảng Giả lập' })).not.toBeNull();
   });
 
   it('gửi như khách: câu mẫu cảnh 3 được điền khi bấm, gửi đúng persona và nội dung, rồi xóa ô', async () => {

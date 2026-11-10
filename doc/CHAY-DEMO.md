@@ -33,9 +33,31 @@ npm run cli -- demo:reset      # dựng 4 khách nền, đặt đồng hồ về
 npm run dev                    # server, cổng 3000
 ```
 
-**Giao diện `web/` chưa được xây** (mới có `package.json`). Hiện chỉ demo được bằng CLI và `curl` tới `/api/*`; mục bên dưới là cách đó.
+## Giao diện (`web/`)
+
+Ở một cửa sổ terminal khác (backend phải đang chạy ở cổng 3000):
+
+```
+cd web
+npm install
+npm run dev                    # http://localhost:5173
+```
+
+Vite chuyển tiếp `/api` tới `127.0.0.1:3000`, nên backend không cần CORS. Mở http://localhost:5173.
+
+- **Trang chủ** (cảnh 0 và 6) và **Hội thoại** (cảnh 1–3): chọn ở thanh bên trái. Đổi vai Lan / chị Hà ở góc trên phải.
+- **Bảng Giả lập** (nút "Giả lập" ở thanh trên): gửi tin như khách, gửi tin như Lan ở Page Inbox, và tua đồng hồ tới đúng mốc từng cảnh. Có sẵn câu mẫu lấy nguyên văn từ kịch bản; bộ trích offline chỉ hiểu các câu này và biến thể gần.
+- **Đặt lại demo** ở thanh trên (có hỏi xác nhận) tương đương `demo:reset`: về Thứ Năm 12/11 09:00 và dựng lại dữ liệu nền. Đồng hồ chỉ tiến, không lùi.
+- Giao diện chỉ hoạt động khi backend có `DEMO_MODE=true`; nếu chưa bật hoặc chưa có dữ liệu, màn hình báo lỗi kèm cách khắc phục.
+- Kiểm thử giao diện: `cd web && npm test` (Vitest, không cần backend). Kiểm tra kiểu: `npm run typecheck`.
+
+Thứ tự diễn gợi ý: Trang chủ (Lan) → Giả lập: "Cảnh 1: Thứ Năm 09:05", gửi hai tin cảnh 1 → mở Minh, thẻ khách tự điền → Lan trả lời → "Cảnh 2: Thứ Sáu 09:30", xác nhận ngừng bám cho Cô Mai → "Cảnh 3: Thứ Sáu 09:40", gửi tin cảnh 3 → duyệt SĐT, chọn ngày hẹn, duyệt mốc hẹn → Trang chủ → đổi sang chị Hà xem số liệu AI.
+
+Nếu không dùng giao diện thì vẫn demo được bằng CLI và `curl` tới `/api/*`; mục bên dưới là cách đó.
 
 ## Lệnh demo (không cần giao diện)
+
+Trên Windows, `curl -d` từ Git Bash có thể làm hỏng dấu tiếng Việt; hãy dùng CLI này, Node hoặc giao diện để gửi tin.
 
 ```
 npm run cli -- demo:send minh "Cho mình hỏi mẫu này còn không?"     # khách gửi tin

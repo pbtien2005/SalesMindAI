@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useAdvanceClockTo, useCustomerMessage, useInbox, usePageMessage, usePersonas } from '../api/hooks';
 import { useSession } from '../state/session';
 import { ErrorBanner } from './ErrorBanner';
@@ -29,7 +29,7 @@ const field = 'w-full rounded-lg border border-line-strong px-2.5 text-sm';
 const chip = 'h-7 rounded-full border border-line-strong bg-white px-2.5 text-xs hover:bg-canvas';
 const sendBtn = 'h-9 w-full rounded-lg border-0 bg-brand font-semibold text-white disabled:bg-[#c9d2e0] disabled:text-ink-2';
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-b border-[#eef1f5] px-[18px] py-4">
       <h3 className="m-0 mb-2.5 text-sm font-bold">{title}</h3>
@@ -51,6 +51,12 @@ export function SimulatorPanel() {
   const [customerText, setCustomerText] = useState('');
   const [target, setTarget] = useState('');
   const [pageText, setPageText] = useState('');
+  const panel = useRef<HTMLElement>(null);
+
+  // Mở ngăn kéo thì đưa focus vào trong để người dùng bàn phím không phải Tab qua cả màn hình.
+  useEffect(() => {
+    if (simulatorOpen) panel.current?.focus();
+  }, [simulatorOpen]);
 
   if (!simulatorOpen) return null;
 
@@ -69,23 +75,31 @@ export function SimulatorPanel() {
     if (!text || !pageTarget || page.isPending) return;
     page.mutate({ conversationId: pageTarget, text }, { onSuccess: () => setPageText('') });
   };
+  // Đóng thì trả focus về nút "Giả lập" đã mở nó.
+  const close = () => {
+    closeSimulator();
+    document.getElementById('sim-toggle')?.focus();
+  };
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') closeSimulator();
+    // Esc trong danh sách chọn chỉ nên đóng danh sách, không đóng cả bảng.
+    if (e.key === 'Escape' && !(e.target instanceof HTMLSelectElement)) close();
   };
 
   return (
     <aside
       id="simulator-panel"
+      ref={panel}
+      tabIndex={-1}
       aria-label="Bảng Giả lập"
       onKeyDown={onKeyDown}
-      className="absolute bottom-0 right-0 top-0 z-10 flex w-[380px] flex-col overflow-auto border-l border-line-strong bg-white shadow-[-8px_0_24px_rgba(15,27,45,.12)]"
+      className="overscroll-contain outline-none absolute bottom-0 right-0 top-0 z-10 flex w-[380px] flex-col overflow-auto border-l border-line-strong bg-white shadow-[-8px_0_24px_rgba(15,27,45,.12)]"
     >
       <div className="flex items-center justify-between border-b border-line px-[18px] py-3.5">
         <div>
           <h2 className="m-0 text-[15px] font-bold">Giả lập (chỉ dùng khi demo)</h2>
           <div className="text-xs text-ink-3">Tin giả đi qua webhook thật, chưa dùng Page Facebook thật.</div>
         </div>
-        <button type="button" onClick={closeSimulator} aria-label="Đóng bảng Giả lập" className="h-9 w-9 rounded-lg border border-line-strong bg-white text-lg leading-none">
+        <button type="button" onClick={close} aria-label="Đóng bảng Giả lập" className="h-9 w-9 rounded-lg border border-line-strong bg-white text-lg leading-none">
           ×
         </button>
       </div>
@@ -95,7 +109,7 @@ export function SimulatorPanel() {
           <label htmlFor="sim-persona" className="text-xs text-ink-3">
             Khách
           </label>
-          <select id="sim-persona" value={persona} onChange={(e) => setPersona(e.target.value)} className={`${field} h-9`}>
+          <select id="sim-persona" name="persona" autoComplete="off" value={persona} onChange={(e) => setPersona(e.target.value)} className={`${field} h-9`}>
             {(personas.data?.personas ?? [{ key: 'minh', displayName: 'Facebook: anh Minh' }]).map((p) => (
               <option key={p.key} value={p.key}>
                 {p.displayName}
@@ -105,7 +119,7 @@ export function SimulatorPanel() {
           <label htmlFor="sim-customer-text" className="text-xs text-ink-3">
             Nội dung tin
           </label>
-          <textarea id="sim-customer-text" value={customerText} onChange={(e) => setCustomerText(e.target.value)} rows={3} className={`${field} py-2`} />
+          <textarea id="sim-customer-text" name="customer-text" autoComplete="off" placeholder="Ví dụ: Chào shop, anh đang tìm sofa…" value={customerText} onChange={(e) => setCustomerText(e.target.value)} rows={3} className={`${field} py-2`} />
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs text-ink-3">Câu mẫu:</span>
             {CUSTOMER_SAMPLES.map((s) => (
@@ -131,7 +145,7 @@ export function SimulatorPanel() {
           <label htmlFor="sim-target" className="text-xs text-ink-3">
             Hội thoại
           </label>
-          <select id="sim-target" value={pageTarget} onChange={(e) => setTarget(e.target.value)} className={`${field} h-9`} disabled={list.length === 0}>
+          <select id="sim-target" name="conversation" autoComplete="off" value={pageTarget} onChange={(e) => setTarget(e.target.value)} className={`${field} h-9`} disabled={list.length === 0}>
             {list.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.displayName}
@@ -141,7 +155,7 @@ export function SimulatorPanel() {
           <label htmlFor="sim-page-text" className="text-xs text-ink-3">
             Nội dung tin
           </label>
-          <textarea id="sim-page-text" value={pageText} onChange={(e) => setPageText(e.target.value)} rows={3} className={`${field} py-2`} />
+          <textarea id="sim-page-text" name="page-text" autoComplete="off" placeholder="Ví dụ: Dạ em chào anh ạ…" value={pageText} onChange={(e) => setPageText(e.target.value)} rows={3} className={`${field} py-2`} />
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs text-ink-3">Câu mẫu:</span>
             {LAN_SAMPLES.map((s) => (

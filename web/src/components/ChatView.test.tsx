@@ -113,6 +113,65 @@ describe('ChatView (cảnh 3)', () => {
     expect(send.disabled).toBe(true);
   });
 
+  it('"Ngừng bám" ở đầu khung chat cần xác nhận mới gọi API', async () => {
+    const d = scene3();
+    d.summary = { ...d.summary, followup: { count: 2, max: 5, stopped: false, suggestStop: false } };
+    const f = serve(d);
+    const user = userEvent.setup();
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Minh' });
+    await user.click(screen.getByRole('button', { name: 'Ngừng bám' }));
+    expect(f.posts()).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Hủy' }));
+    expect(f.posts()).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: 'Ngừng bám' }));
+    await user.click(screen.getByRole('button', { name: 'Xác nhận ngừng bám' }));
+    await waitFor(() => expect(f.posts()).toHaveLength(1));
+    expect(f.posts()[0]?.url).toBe('/api/conversations/c-minh/stop-followup');
+  });
+
+  it('đổi sang hội thoại đã có trong bộ nhớ đệm thì bản nháp và hộp xác nhận "Ngừng bám" không rò sang', async () => {
+    const a = scene3();
+    a.summary = { ...a.summary, id: 'c-a', displayName: 'Khách A', lastMessageAt: '2026-11-13T02:45:00.000Z', followup: { count: 2, max: 5, stopped: false, suggestStop: false } };
+    const b = scene3();
+    b.summary = { ...b.summary, id: 'c-b', displayName: 'Khách B', lastMessageAt: '2026-11-13T02:00:00.000Z', followup: { count: 2, max: 5, stopped: false, suggestStop: false } };
+    const f = mockFetch((url) => {
+      if (url === '/api/inbox') return json({ now: '2026-11-13T02:45:00.000Z', conversations: [a.summary, b.summary] });
+      if (url === '/api/conversations/c-a') return json(a);
+      if (url === '/api/conversations/c-b') return json(b);
+      return json({ error: { code: 'not_found', message: url } }, 404);
+    });
+    const user = userEvent.setup();
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Khách A', level: 2 });
+    // Mở B một lần để cả hai đã nằm trong bộ nhớ đệm.
+    await user.click(screen.getByRole('button', { name: /Khách B/ }));
+    await screen.findByRole('heading', { name: 'Khách B', level: 2 });
+    await user.click(screen.getByRole('button', { name: /Khách A/ }));
+    await screen.findByRole('heading', { name: 'Khách A', level: 2 });
+
+    // Nay A -> B đều có dữ liệu sẵn, khung chat không bị gỡ ra giữa chừng.
+    await user.type(screen.getByLabelText('Tin trả lời của Lan (giả lập Page Inbox)'), 'bản nháp cho A');
+    await user.click(screen.getByRole('button', { name: 'Ngừng bám' }));
+    expect(screen.getByText('Ngừng bám khách này?')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /Khách B/ }));
+    await screen.findByRole('heading', { name: 'Khách B', level: 2 });
+    expect(screen.queryByText('Ngừng bám khách này?')).toBeNull();
+    expect((screen.getByLabelText('Tin trả lời của Lan (giả lập Page Inbox)') as HTMLInputElement).value).toBe('');
+    expect(f.posts()).toHaveLength(0);
+  });
+
+  it('cấu trúc: một h1, và Hộp đề xuất, Thẻ khách là h2', async () => {
+    serve(scene3());
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Minh' });
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 2, name: /Hộp đề xuất/ })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Thẻ khách' })).toBeTruthy();
+  });
+
   it('hiện "Chưa ai trả lời" khi khách đang chờ Page', async () => {
     const d = scene3();
     d.summary = { ...d.summary, waitingOn: 'page', waitingMinutes: 8 };

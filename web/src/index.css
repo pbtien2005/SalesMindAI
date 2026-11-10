@@ -40,6 +40,7 @@ body {
 }
 
 button {
+  touch-action: manipulation;
   font-family: inherit;
   cursor: pointer;
 }
@@ -51,4 +52,27 @@ button:disabled {
 :focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
+}
+
+/* Phản hồi hover chung cho nút chưa có kiểu hover riêng. */
+button:not(:disabled):hover {
+  background-image: linear-gradient(rgb(0 0 0 / 0.05), rgb(0 0 0 / 0.05));
+}
+
+html {
+  color-scheme: light;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 50;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--color-brand);
+  color: #fff;
+}
+.skip-link:focus {
+  left: 8px;
 }

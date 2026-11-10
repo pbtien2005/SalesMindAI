@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { formatDateTime, nextWeekendPicks, toIsoWithOffset } from '../api/format';
+import { formatDateTime, formatPhoneDisplay, nextWeekendPicks, toIsoWithOffset } from '../api/format';
 import { useDecide, useStopFollowup } from '../api/hooks';
 import { NEEDS_CLARIFICATION, type BoxItem, type DecideBody, type MessageView, type ProposalView } from '../api/types';
 import { fieldLabel } from '../lib/fields';
@@ -33,7 +33,8 @@ function Evidences({ p, messages, onJump }: { p: ProposalView; messages: Message
 function TextProposal({ p, messages, onJump }: { p: ProposalItem; messages: MessageView[]; onJump: (id: string) => void }) {
   const decide = useDecide();
   const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(p.value.text);
+  // Điền sẵn đúng dạng đang hiển thị để người sửa không thấy hai định dạng khác nhau.
+  const [text, setText] = useState(p.field === 'phone' ? formatPhoneDisplay(p.value.text) : p.value.text);
   const send = (body: DecideBody) => decide.mutate({ proposalId: p.id, body });
   const label = fieldLabel(p.field);
 
@@ -45,10 +46,18 @@ function TextProposal({ p, messages, onJump }: { p: ProposalItem; messages: Mess
           <label htmlFor={`edit-${p.id}`} className="sr-only">
             Giá trị đã sửa của {label}
           </label>
-          <input id={`edit-${p.id}`} value={text} onChange={(e) => setText(e.target.value)} className="h-9 w-full rounded-lg border border-line-strong px-2 text-sm" />
+          <input
+            id={`edit-${p.id}`}
+            name={`edit-${p.field}`}
+            autoComplete="off"
+            spellCheck={false}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className="h-9 w-full rounded-lg border border-line-strong px-2 text-sm"
+          />
         </div>
       ) : (
-        <div className="my-0.5 text-[17px] font-bold">{p.value.text}</div>
+        <div className="my-0.5 text-[17px] font-bold">{p.field === 'phone' ? formatPhoneDisplay(p.value.text) : p.value.text}</div>
       )}
       <Evidences p={p} messages={messages} onJump={onJump} />
       {p.field === 'phone' ? <div className="mt-1.5 text-xs font-semibold text-ok">Hệ thống đã kiểm tra định dạng số di động Việt Nam</div> : null}
@@ -113,6 +122,8 @@ function TimelineProposal({ p, messages, onJump }: { p: ProposalItem; messages: 
           </label>
           <input
             id={`dt-${p.id}`}
+            name="chosen-at"
+            autoComplete="off"
             type="datetime-local"
             value={local}
             onChange={(e) => setLocal(e.target.value)}
@@ -166,10 +177,10 @@ function StopFollowupProposal({ conversationId, item }: { conversationId: string
 export function ProposalBox({ conversationId, items, messages, onJump }: { conversationId: string; items: BoxItem[]; messages: MessageView[]; onJump: (messageId: string) => void }) {
   return (
     <div className="border-b border-[#eef1f5] px-[18px] py-4">
-      <div className="mb-2.5 flex items-center text-[15px] font-bold">
+      <h2 className="m-0 mb-2.5 flex items-center text-[15px] font-bold">
         Hộp đề xuất
         {items.length > 0 ? <span className="ml-1.5 rounded-full bg-amber-soft px-2 py-0.5 text-xs font-semibold text-amber-ink">{items.length} chờ duyệt</span> : null}
-      </div>
+      </h2>
       {items.length === 0 ? <p className="m-0 text-sm text-ink-3">Chưa có đề xuất nào cần duyệt.</p> : null}
       {items.map((it) => {
         if (it.kind === 'stop_followup') return <StopFollowupProposal key="stop" conversationId={conversationId} item={it} />;

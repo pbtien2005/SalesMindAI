@@ -43,6 +43,11 @@ describe('buildCardRows', () => {
     expect(rowOf(d, 'phone')).toMatchObject({ state: 'approved', text: '0912 345 678', decidedBy: 'Lan', edited: false });
   });
 
+  it('SĐT đã duyệt được chia nhóm khi hiển thị', () => {
+    const d = detail({ approved: [{ field: 'phone', value: { text: '0912345678' }, version: 1, updatedAt: '2026-11-13T02:31:00Z', decidedBy: 'Lan', status: 'accepted' }] });
+    expect(rowOf(d, 'phone').text).toBe('0912 345 678');
+  });
+
   it('đã sửa được đánh dấu edited', () => {
     const d = detail({ approved: [{ field: 'phone', value: { text: '0912 345 679' }, version: 2, updatedAt: '2026-11-13T02:31:00Z', decidedBy: 'Lan', status: 'edited' }] });
     expect(rowOf(d, 'phone').edited).toBe(true);

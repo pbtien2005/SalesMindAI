@@ -130,6 +130,16 @@ describe('Hộp đề xuất: SĐT', () => {
     expect(f.body(0)).toEqual({ action: 'accept' });
   });
 
+  it('ô Sửa điền sẵn đúng dạng đang hiển thị (có chia nhóm), không phải dạng thô', async () => {
+    ok();
+    const user = userEvent.setup();
+    const raw: BoxItem = { kind: 'proposal', ...proposal({ id: 'p-raw', field: 'phone', value: { text: '0912345678' } }) };
+    show([raw]);
+    expect(screen.getByText('0912 345 678', { selector: 'div' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Sửa' }));
+    expect((screen.getByLabelText('Giá trị đã sửa của Số điện thoại') as HTMLInputElement).value).toBe('0912 345 678');
+  });
+
   it('Sửa rồi Lưu gửi edit kèm editedText; Hủy không gọi API', async () => {
     const f = ok();
     const user = userEvent.setup();

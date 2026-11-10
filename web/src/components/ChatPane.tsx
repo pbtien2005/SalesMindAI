@@ -45,6 +45,7 @@ export function ChatPane({ detail, role, flashId }: { detail: ConversationDetail
   const stop = useStopFollowup();
   const send = usePageMessage();
   const [draft, setDraft] = useState('');
+  const [confirmStop, setConfirmStop] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const ranges = useMemo(() => allEvidence(detail), [detail]);
 
@@ -102,14 +103,26 @@ export function ChatPane({ detail, role, flashId }: { detail: ConversationDetail
           </span>
         ) : null}
         {role === 'lan' && f.count > 0 && !f.stopped ? (
-          <button
-            type="button"
-            disabled={stop.isPending}
-            onClick={() => stop.mutate(summary.id)}
-            className="h-[34px] rounded-lg border border-line-strong bg-white px-3 text-[13px] disabled:opacity-50"
-          >
-            Ngừng bám
-          </button>
+          confirmStop ? (
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs text-ink-3">Ngừng bám khách này?</span>
+              <button
+                type="button"
+                disabled={stop.isPending}
+                onClick={() => stop.mutate(summary.id, { onSettled: () => setConfirmStop(false) })}
+                className="h-[34px] rounded-lg border-0 bg-brand px-3 text-[13px] font-semibold text-white disabled:opacity-50"
+              >
+                Xác nhận ngừng bám
+              </button>
+              <button type="button" onClick={() => setConfirmStop(false)} className="h-[34px] rounded-lg border border-line-strong bg-white px-3 text-[13px]">
+                Hủy
+              </button>
+            </span>
+          ) : (
+            <button type="button" onClick={() => setConfirmStop(true)} className="h-[34px] rounded-lg border border-line-strong bg-white px-3 text-[13px]">
+              Ngừng bám
+            </button>
+          )
         ) : null}
       </div>
       {stop.error ? (
@@ -148,9 +161,11 @@ export function ChatPane({ detail, role, flashId }: { detail: ConversationDetail
               </label>
               <input
                 id="page-msg"
+                name="page-message"
+                autoComplete="off"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder="Gõ tin trả lời như ở Page Inbox"
+                placeholder="Gõ tin trả lời như ở Page Inbox…"
                 className="h-[42px] grow rounded-lg border border-line-strong px-3 text-sm"
               />
               <button type="submit" disabled={draft.trim() === '' || send.isPending} className="h-[42px] rounded-lg border-0 bg-brand px-[18px] font-semibold text-white disabled:bg-[#c9d2e0] disabled:text-ink-2">

@@ -5,6 +5,7 @@ import { ChatPane } from './ChatPane';
 import { CustomerCard } from './CustomerCard';
 import { ErrorBanner } from './ErrorBanner';
 import { InboxList } from './InboxList';
+import { Main } from './Main';
 import { ProposalBox } from './ProposalBox';
 
 /** Màn Hội thoại: danh sách | khung chat | Hộp đề xuất và thẻ khách. */
@@ -33,19 +34,26 @@ export function ChatView() {
 
   if (inbox.error) {
     return (
-      <div className="min-w-0 grow p-6">
+      <Main title="Hội thoại" className="p-6">
         <ErrorBanner error={inbox.error} />
-      </div>
+      </Main>
     );
   }
-  if (!inbox.data) return <div className="p-6 text-ink-3">Đang tải hộp thư…</div>;
+  if (!inbox.data) {
+    return (
+      <Main title="Hội thoại" className="p-6 text-ink-3">
+        Đang tải hộp thư…
+      </Main>
+    );
+  }
 
   return (
-    <div className="flex min-h-0 min-w-0 grow">
+    <Main title="Hội thoại" className="flex min-h-0">
       <InboxList conversations={list} now={inbox.data.now} selectedId={effectiveId} onSelect={selectConversation} />
       {detail.data ? (
         <>
-          <ChatPane detail={detail.data} role={role} flashId={flashId} />
+          {/* key: trạng thái cục bộ (bản nháp, hộp xác nhận) không được rò sang hội thoại khác */}
+          <ChatPane key={detail.data.summary.id} detail={detail.data} role={role} flashId={flashId} />
           <aside aria-label="Thông tin khách" className="flex w-[360px] flex-none flex-col overflow-auto border-l border-line bg-white">
             <ProposalBox conversationId={detail.data.summary.id} items={detail.data.box} messages={detail.data.messages} onJump={jump} />
             <CustomerCard detail={detail.data} onJump={jump} />
@@ -56,6 +64,6 @@ export function ChatView() {
           {detail.error ? <ErrorBanner error={detail.error} /> : <p className="text-ink-3">{effectiveId ? 'Đang tải hội thoại…' : 'Khi có khách nhắn tới, cuộc trò chuyện sẽ hiện ở đây.'}</p>}
         </div>
       )}
-    </div>
+    </Main>
   );
 }

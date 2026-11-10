@@ -4,7 +4,7 @@
  * Ưu tiên: dữ liệu đã duyệt > AI tự điền (trường nhẹ, chưa duyệt) > đang chờ trong Hộp đề xuất > thiếu.
  * Mốc thời gian mơ hồ (cờ `needs_clarification`) KHÔNG bao giờ có ngày cho tới khi Sale chọn: trạng thái `needs_date`.
  */
-import { formatDateTime } from '../api/format';
+import { formatDateTime, formatPhoneDisplay } from '../api/format';
 import { NEEDS_CLARIFICATION, type ApprovedView, type ConversationDetail, type Evidence, type ProposalView } from '../api/types';
 import { CARD_FIELDS, fieldLabel } from './fields';
 
@@ -26,6 +26,7 @@ export interface CardRow {
 
 function approvedText(a: ApprovedView): string {
   if (a.field === 'timeline' && a.value.chosenAt) return formatDateTime(a.value.chosenAt);
+  if (a.field === 'phone') return formatPhoneDisplay(a.value.text);
   return a.value.text;
 }
 

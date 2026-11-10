@@ -2,7 +2,7 @@
 
 Module này nhận tin nhắn khách gửi vào Facebook Page của doanh nghiệp **và tin Page trả lời khách** (kể cả tin nhân viên gõ ở Page Inbox), kiểm tra tính xác thực, khử trùng và lưu vào PostgreSQL, để các module sau (AI trích nhu cầu, đề xuất việc, nhắc hạn) dùng làm dữ liệu đầu vào. Ghi nhận thêm lần tương tác cuối của khách (tin, reaction, postback, referral) và cảnh báo chính sách của Meta.
 
-**Phạm vi:** chỉ đọc và lưu tin. Không có AI, không có giao diện, **không gửi tin cho khách**.
+**Phạm vi:** backend chỉ đọc và lưu tin, **không gửi tin cho khách**. AI trích xuất (Module 2) và giao diện demo `web/` (chạy khi `DEMO_MODE=true`) xem [doc/CHAY-DEMO.md](doc/CHAY-DEMO.md).
 
 > **Trạng thái:** mã nguồn và test tự động đã xong. Việc kết nối Page thật và nhận tin từ Meta thật **chưa được kiểm tra** (cần Meta App và Page của bạn). Xem [PROGRESS.md](PROGRESS.md) và [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md).
 

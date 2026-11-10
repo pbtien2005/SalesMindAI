@@ -36,7 +36,7 @@ export function CustomerCard({ detail, onJump }: { detail: ConversationDetail; o
   const rows = buildCardRows(detail);
   return (
     <div className="flex flex-col gap-3 px-[18px] py-4">
-      <h3 className="m-0 text-[15px] font-bold">Thẻ khách</h3>
+      <h2 className="m-0 text-[15px] font-bold">Thẻ khách</h2>
       {rows.map((r) => (
         <div key={r.field}>
           <div className="text-xs text-ink-3">{r.label}</div>

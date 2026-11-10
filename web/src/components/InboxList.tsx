@@ -112,13 +112,22 @@ export function InboxList({
   return (
     <section aria-label="Danh sách hội thoại" className="flex w-[340px] flex-none flex-col border-r border-line bg-white">
       <div className="flex flex-col gap-2.5 px-3.5 pb-2 pt-3.5">
-        <label className="flex h-[38px] items-center gap-2 rounded-lg border border-line-strong px-2.5 text-ink-3">
+        <label className="flex h-[38px] items-center gap-2 rounded-lg border border-line-strong px-2.5 text-ink-3 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
             <path d="M20 20l-4-4" />
           </svg>
           <span className="sr-only">Tìm khách</span>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm theo tên khách" className="grow border-0 bg-transparent text-sm text-ink outline-none" />
+          <input
+            type="search"
+            name="search"
+            autoComplete="off"
+            spellCheck={false}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Tìm theo tên khách…"
+            className="grow border-0 bg-transparent text-sm text-ink outline-none"
+          />
         </label>
         <div className="flex flex-wrap gap-1.5">
           {tab('all', 'Tất cả', counts.all)}

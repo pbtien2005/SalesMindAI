@@ -4,6 +4,7 @@ import { useHome } from '../api/hooks';
 import type { HomeData, Reminder } from '../api/types';
 import { useSession } from '../state/session';
 import { ErrorBanner } from './ErrorBanner';
+import { Main } from './Main';
 
 type Accent = 'red' | 'amber' | 'blue';
 const ACCENT: Record<Accent, { border: string; value: string }> = {
@@ -17,7 +18,7 @@ function StatCard({ accent, label, value, detail, action }: { accent: Accent; la
   return (
     <div className={`rounded-xl border border-t-4 bg-white p-4 ${a.border}`}>
       <div className="text-[13px] text-ink-3">{label}</div>
-      <div className={`text-[34px] font-bold leading-[1.2] ${a.value}`}>{value}</div>
+      <div className={`text-[34px] font-bold leading-[1.2] tabular-nums ${a.value}`}>{value}</div>
       <div className="text-[13px] text-ink-2">{detail}</div>
       {action}
     </div>
@@ -84,7 +85,7 @@ function AiStatsBlock({ ai }: { ai: HomeData['ai'] }) {
       <dl className="m-0 grid grid-cols-4 gap-3.5">
         {items.map((it) => (
           <div key={it.label}>
-            <dd className="m-0 text-2xl font-bold text-ink">{it.value}</dd>
+            <dd className="m-0 text-2xl font-bold tabular-nums text-ink">{it.value}</dd>
             <dt className="text-xs text-ink-3">{it.label}</dt>
           </div>
         ))}
@@ -101,13 +102,13 @@ export function HomeView() {
 
   if (home.error) {
     return (
-      <main className="min-w-0 grow p-6">
+      <Main className="p-6">
         <ErrorBanner error={home.error} />
-      </main>
+      </Main>
     );
   }
   const h = home.data;
-  if (!h) return <main className="p-6 text-ink-3">Đang tải trang chủ…</main>;
+  if (!h) return <Main className="p-6 text-ink-3">Đang tải trang chủ…</Main>;
 
   const overdueNames = [...new Set(h.overdue.map((t) => t.displayName))];
   const upcoming = h.reminders.filter((r) => r.kind === 'upcoming').length;
@@ -116,7 +117,7 @@ export function HomeView() {
   const first = h.p1[0];
 
   return (
-    <main className="flex min-w-0 grow flex-col gap-[18px] overflow-auto px-7 py-6">
+    <Main className="flex flex-col gap-[18px] overflow-auto px-7 py-6">
       <div className="flex items-baseline gap-3">
         <h1 className="m-0 text-[22px] font-bold">{role === 'ha' ? 'Trang chủ, đội của chị Hà' : 'Trang chủ của Lan'}</h1>
         <span className="text-ink-3">{formatDateTime(h.now)}</span>
@@ -160,6 +161,6 @@ export function HomeView() {
       </section>
 
       <AiStatsBlock ai={h.ai} />
-    </main>
+    </Main>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daysOverdue, formatDateTime, formatDay, formatInboxTime, formatTime, formatWait, nextWeekendPicks, toIsoWithOffset, toLocalInput } from './format';
+import { daysOverdue, formatDateTime, formatDay, formatInboxTime, formatPhoneDisplay, formatTime, formatWait, nextWeekendPicks, toIsoWithOffset, toLocalInput } from './format';
 
 // Kịch bản demo: Thứ Năm 12/11/2026 09:00 giờ VN = 02:00Z.
 const THU_0900 = '2026-11-12T02:00:00.000Z';
@@ -46,6 +46,18 @@ describe('định dạng thời gian theo giờ Việt Nam', () => {
     expect(daysOverdue('2026-11-09T08:00:00Z', THU_0900)).toBe(3);
     expect(daysOverdue('2026-11-11T10:00:00Z', THU_0900)).toBe(1);
     expect(daysOverdue('2026-11-14T03:00:00Z', THU_0900)).toBe(-2);
+  });
+});
+
+describe('formatPhoneDisplay (chỉ để hiển thị)', () => {
+  it('chia nhóm số di động 10 chữ số', () => {
+    expect(formatPhoneDisplay('0912345678')).toBe('0912 345 678');
+    expect(formatPhoneDisplay('0912 345 678')).toBe('0912 345 678');
+  });
+  it('dạng khác giữ nguyên, không đoán', () => {
+    expect(formatPhoneDisplay('+84912345678')).toBe('+84912345678');
+    expect(formatPhoneDisplay('091234567')).toBe('091234567');
+    expect(formatPhoneDisplay('abc')).toBe('abc');
   });
 });
 

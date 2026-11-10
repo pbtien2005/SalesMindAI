@@ -76,6 +76,7 @@ export function TopBar() {
       <button
         type="button"
         aria-expanded={simulatorOpen}
+        id="sim-toggle"
         aria-controls="simulator-panel"
         onClick={toggleSimulator}
         className={`h-8 rounded-lg border px-3 ${simulatorOpen ? 'border-white bg-white font-semibold text-navy' : 'border-navy-line bg-transparent text-white hover:bg-navy-2'}`}

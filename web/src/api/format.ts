@@ -77,6 +77,12 @@ export function daysOverdue(dueIso: string, nowIso: string): number {
   return Math.round((dayKey(n) - dayKey(d)) / 86_400_000);
 }
 
+/** Chỉ để HIỂN THỊ: "0912345678" -> "0912 345 678". Giá trị lưu và gửi đi không đổi. Dạng khác giữ nguyên. */
+export function formatPhoneDisplay(value: string): string {
+  const d = value.replace(/\s+/g, '');
+  return /^0\d{9}$/.test(d) ? `${d.slice(0, 4)} ${d.slice(4, 7)} ${d.slice(7)}` : value;
+}
+
 export interface DatePick {
   label: string;
   /** Giá trị cho `<input type="datetime-local">`. */

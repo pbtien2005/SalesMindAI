@@ -9,6 +9,9 @@ export function App() {
   const { view } = useSession();
   return (
     <div className="flex h-full min-w-[1280px] flex-col">
+      <a href="#main" className="skip-link">
+        Bỏ qua tới nội dung chính
+      </a>
       <TopBar />
       <div className="relative flex min-h-0 grow">
         <SideNav />
