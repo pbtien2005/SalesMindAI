@@ -130,7 +130,7 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
       );
     } catch (e) {
       if (e instanceof ProposalError) {
-        const status = { not_found: 404, not_pending: 409, needs_date: 422, invalid: 400 }[e.code];
+        const status = { not_found: 404, not_pending: 409, needs_date: 422, past_date: 422, invalid: 400 }[e.code];
         return err(reply, status, e.code, e.message);
       }
       throw e;

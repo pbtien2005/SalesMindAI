@@ -22,6 +22,8 @@ export interface CardRow {
   edited?: boolean;
   /** `ai`: câu gốc đã kiểm chứng của đề xuất. */
   evidence: Evidence[];
+  /** `ai`: id đề xuất, để Sale sửa giá trị AI điền sai. */
+  proposalId?: string;
 }
 
 function approvedText(a: ApprovedView): string {
@@ -43,7 +45,7 @@ export function buildCardRows(detail: ConversationDetail): CardRow[] {
       return { field, label, state: 'approved', text: approvedText(a), decidedBy: a.decidedBy, decidedAt: a.updatedAt, edited: a.status === 'edited', evidence: [] };
     }
     const p = ai.get(field);
-    if (p) return { field, label, state: 'ai', text: p.value.text, evidence: p.evidence };
+    if (p) return { field, label, state: 'ai', text: p.value.text, evidence: p.evidence, proposalId: p.id };
 
     const pending = inBox.get(field);
     if (pending) {

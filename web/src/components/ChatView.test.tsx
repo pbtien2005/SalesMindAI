@@ -48,6 +48,28 @@ function serve(d: ConversationDetail) {
   });
 }
 
+describe('ChatView: sửa giá trị AI điền', () => {
+  it('Sale sửa sản phẩm AI điền sai: gửi action edit với giá trị mới', async () => {
+    const d = scene3();
+    const f = mockFetch((url) => {
+      if (url.startsWith('/api/inbox')) return json({ now: '2026-11-13T02:45:00.000Z', conversations: [d.summary] });
+      if (url.startsWith('/api/conversations/')) return json(d);
+      return json({ proposalId: 'a1', field: 'product_interest', status: 'edited' });
+    });
+    const user = userEvent.setup();
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Minh' });
+    await user.click(screen.getByRole('button', { name: 'Sửa Sản phẩm quan tâm' }));
+    const input = screen.getByLabelText('Giá trị đã sửa của Sản phẩm quan tâm');
+    await user.clear(input);
+    await user.type(input, 'Tủ giày');
+    await user.click(screen.getByRole('button', { name: 'Lưu và duyệt' }));
+    await waitFor(() => expect(f.posts().some((p) => p.url === '/api/proposals/a1/decide')).toBe(true));
+    const i = f.posts().findIndex((p) => p.url === '/api/proposals/a1/decide');
+    expect(f.body(i)).toEqual({ action: 'edit', editedText: 'Tủ giày' });
+  });
+});
+
 describe('ChatView: tệp đính kèm', () => {
   it('hiện ảnh khách gửi và dùng nhãn cho tệp không có URL an toàn', async () => {
     const d = detail({

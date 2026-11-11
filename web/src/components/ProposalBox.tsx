@@ -94,10 +94,10 @@ function TextProposal({ p, messages, onJump }: { p: ProposalItem; messages: Mess
  * Mốc hẹn. Nếu có cờ `needs_clarification` (cụm mơ hồ như "cuối tuần này") thì Sale BẮT BUỘC chọn ngày:
  * ô chọn để trống, nút Duyệt khóa cho tới khi chọn, và không có đường nào tự điền ngày.
  */
-function TimelineProposal({ p, messages, onJump }: { p: ProposalItem; messages: MessageView[]; onJump: (id: string) => void }) {
+function TimelineProposal({ p, messages, onJump, local, setLocal }: { p: ProposalItem; messages: MessageView[]; onJump: (id: string) => void; local: string; setLocal: (v: string) => void }) {
   const decide = useDecide();
   const needsDate = p.flags.includes(NEEDS_CLARIFICATION);
-  const [local, setLocal] = useState(''); // luôn bắt đầu rỗng
+  // `local` do hộp đề xuất giữ (luôn bắt đầu rỗng) để nút "Duyệt N mục" dùng chung ngày đã chọn.
   const chosenAt = toIsoWithOffset(local);
   const canAccept = !decide.isPending && (!needsDate || chosenAt !== null);
   const picks = p.value.sentAt ? nextWeekendPicks(p.value.sentAt) : [];
@@ -175,6 +175,28 @@ function StopFollowupProposal({ conversationId, item }: { conversationId: string
 }
 
 export function ProposalBox({ conversationId, items, messages, onJump }: { conversationId: string; items: BoxItem[]; messages: MessageView[]; onJump: (messageId: string) => void }) {
+  const decide = useDecide();
+  const [dates, setDates] = useState<Record<string, string>>({});
+  const [bulkError, setBulkError] = useState<unknown>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const proposals = items.filter((i): i is ProposalItem => i.kind === 'proposal');
+  // Mốc hẹn trước (vì cần ngày), rồi các mục còn lại.
+  const ordered = [...proposals.filter((p) => p.field === 'timeline'), ...proposals.filter((p) => p.field !== 'timeline')];
+  const missingDate = proposals.some((p) => p.field === 'timeline' && p.flags.includes(NEEDS_CLARIFICATION) && toIsoWithOffset(dates[p.id] ?? '') === null);
+  const approveAll = async () => {
+    setBulkError(null);
+    setBulkBusy(true);
+    try {
+      for (const p of ordered) {
+        const at = p.field === 'timeline' && p.flags.includes(NEEDS_CLARIFICATION) ? toIsoWithOffset(dates[p.id] ?? '') : null;
+        await decide.mutateAsync({ proposalId: p.id, body: at ? { action: 'accept', chosenAt: at } : { action: 'accept' } });
+      }
+    } catch (e) {
+      setBulkError(e); // dừng ở mục đầu tiên thất bại
+    } finally {
+      setBulkBusy(false);
+    }
+  };
   return (
     <div className="border-b border-[#eef1f5] px-[18px] py-4">
       <h2 className="m-0 mb-2.5 flex items-center text-[15px] font-bold">
@@ -182,10 +204,18 @@ export function ProposalBox({ conversationId, items, messages, onJump }: { conve
         {items.length > 0 ? <span className="ml-1.5 rounded-full bg-amber-soft px-2 py-0.5 text-xs font-semibold text-amber-ink">{items.length} chờ duyệt</span> : null}
       </h2>
       {items.length === 0 ? <p className="m-0 text-sm text-ink-3">Chưa có đề xuất nào cần duyệt.</p> : null}
+      {proposals.length >= 2 ? (
+        <div className="mb-2.5">
+          <button type="button" className={`${primary} w-full flex-none`} disabled={missingDate || bulkBusy} onClick={() => void approveAll()}>
+            {missingDate ? `Duyệt ${proposals.length} mục (chọn ngày hẹn trước)` : `Duyệt ${proposals.length} mục`}
+          </button>
+          {bulkError ? <div className="mt-2"><ErrorBanner error={bulkError} /></div> : null}
+        </div>
+      ) : null}
       {items.map((it) => {
         if (it.kind === 'stop_followup') return <StopFollowupProposal key="stop" conversationId={conversationId} item={it} />;
         return it.field === 'timeline' ? (
-          <TimelineProposal key={it.id} p={it} messages={messages} onJump={onJump} />
+          <TimelineProposal key={it.id} p={it} messages={messages} onJump={onJump} local={dates[it.id] ?? ''} setLocal={(v) => setDates((d) => ({ ...d, [it.id]: v }))} />
         ) : (
           <TextProposal key={it.id} p={it} messages={messages} onJump={onJump} />
         );

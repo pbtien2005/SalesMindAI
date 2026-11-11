@@ -200,3 +200,32 @@ describe('Hộp đề xuất: ngừng bám và trạng thái rỗng', () => {
     expect(screen.getByText('2 chờ duyệt')).toBeTruthy();
   });
 });
+
+describe('Hộp đề xuất: Duyệt nhiều mục', () => {
+  it('khóa tới khi chọn ngày hẹn, rồi gửi mốc hẹn trước và SĐT sau', async () => {
+    const f = ok();
+    const user = userEvent.setup();
+    show([phone, vague]);
+    const bulk = screen.getByRole('button', { name: /Duyệt 2 mục/ }) as HTMLButtonElement;
+    expect(bulk.disabled).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Thứ Bảy 14/11 10:00' }));
+    const ready = screen.getByRole('button', { name: 'Duyệt 2 mục' }) as HTMLButtonElement;
+    expect(ready.disabled).toBe(false);
+    await user.click(ready);
+    await waitFor(() => expect(f.posts()).toHaveLength(2));
+    expect(f.posts()[0]?.url).toBe('/api/proposals/p-time/decide');
+    expect(f.body(0)).toEqual({ action: 'accept', chosenAt: '2026-11-14T10:00:00+07:00' });
+    expect(f.posts()[1]?.url).toBe('/api/proposals/p-phone/decide');
+    expect(f.body(1)).toEqual({ action: 'accept' });
+  });
+
+  it('dừng ở mục đầu tiên thất bại và báo lỗi', async () => {
+    const f = mockFetch(() => json({ error: { code: 'past_date', message: 'Ngày giờ hẹn đã qua.' } }, 422));
+    const user = userEvent.setup();
+    show([phone, vague]);
+    await user.click(screen.getByRole('button', { name: 'Thứ Bảy 14/11 10:00' }));
+    await user.click(screen.getByRole('button', { name: 'Duyệt 2 mục' }));
+    await screen.findByText(/Ngày giờ hẹn đã qua/);
+    expect(f.posts()).toHaveLength(1);
+  });
+});

@@ -7,7 +7,7 @@
  */
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { conversations, followupState, pages, proposals, tasks } from '../db/schema.js';
+import { conversations, followupState, pages, profileFields, proposals, tasks } from '../db/schema.js';
 import { LIGHT_FIELDS, NEEDS_CLARIFICATION, P1_PURPOSES, REVIEW_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
 import { followupStatus, type FollowupStatus } from './followup.js';
 
@@ -28,6 +28,9 @@ export interface ConversationSummary {
   isP1: boolean;
   /** Khách nhắn nhưng Page chưa từng trả lời. */
   isNew: boolean;
+  /** `tracking`: có mốc hẹn đã duyệt còn ở tương lai; `new`: chưa có SĐT đã duyệt và chưa bám; còn lại `chasing`. */
+  stage: 'new' | 'chasing' | 'tracking';
+  nextContact: { at: Date; reason: string } | null;
 }
 
 const minutesBetween = (from: Date, to: Date) => Math.max(0, Math.floor((to.getTime() - from.getTime()) / 60_000));
@@ -87,6 +90,22 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
     if ((s.field === 'message_purpose' && P1_PURPOSES.includes(v)) || (s.field === 'intent' && v === 'ready_to_buy')) hasBuySignal.add(s.conversationId);
   }
 
+  // Giai đoạn khách: dựa trên dữ liệu ĐÃ DUYỆT (mốc hẹn và SĐT).
+  const fieldRows = await db
+    .select({ conversationId: profileFields.conversationId, field: profileFields.field, value: profileFields.value })
+    .from(profileFields)
+    .where(and(eq(profileFields.tenantId, tenantId), inArray(profileFields.conversationId, ids), inArray(profileFields.field, ['timeline', 'phone'])));
+  const apptAt = new Map<string, Date>();
+  const hasPhone = new Set<string>();
+  for (const f of fieldRows) {
+    if (f.field === 'phone') hasPhone.add(f.conversationId);
+    const chosen = (f.value as { chosenAt?: string }).chosenAt;
+    if (f.field === 'timeline' && chosen) {
+      const d = new Date(chosen);
+      if (!Number.isNaN(d.getTime()) && d.getTime() >= now.getTime()) apptAt.set(f.conversationId, d);
+    }
+  }
+
   return convs
     .map((c): ConversationSummary => {
       const times = { lastPageMessageAt: c.lastPageMessageAt, lastUserInteractionAt: c.lastUserInteractionAt };
@@ -107,6 +126,8 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
         followup: followupStatus(times, stoppedAt.get(c.id) ?? null, now),
         isP1: waitingOn === 'page' && (waitingMinutes ?? 0) > P1_WAIT_MINUTES && hasBuySignal.has(c.id),
         isNew: customerWaiting && c.lastPageMessageAt === null,
+        stage: apptAt.has(c.id) ? 'tracking' : !hasPhone.has(c.id) && (followupStatus(times, stoppedAt.get(c.id) ?? null, now).count === 0) ? 'new' : 'chasing',
+        nextContact: apptAt.has(c.id) ? { at: apptAt.get(c.id)!, reason: 'Ngày hẹn đã xác nhận (ưu tiên 1)' } : null,
       };
     })
     .sort((a, b) => (b.lastMessageAt?.getTime() ?? 0) - (a.lastMessageAt?.getTime() ?? 0));

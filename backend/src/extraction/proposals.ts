@@ -13,7 +13,7 @@ import type { Db } from '../db/client.js';
 import { profileFields, proposals, tasks } from '../db/schema.js';
 import { NEEDS_CLARIFICATION, type ProposalValue } from './types.js';
 
-export type ProposalErrorCode = 'not_found' | 'not_pending' | 'needs_date' | 'invalid';
+export type ProposalErrorCode = 'not_found' | 'not_pending' | 'needs_date' | 'past_date' | 'invalid';
 
 export class ProposalError extends Error {
   override readonly name = 'ProposalError';
@@ -96,6 +96,7 @@ export async function decideProposal(db: Db, input: DecideInput, now: Date): Pro
       if (input.chosenAt !== undefined) {
         if (!isoWithOffset.safeParse(input.chosenAt).success) throw new ProposalError('invalid', 'Ngày giờ phải theo dạng ISO 8601 có múi giờ.');
         chosenAt = new Date(input.chosenAt);
+        if (chosenAt.getTime() < now.getTime()) throw new ProposalError('past_date', 'Ngày giờ hẹn đã qua: hãy chọn thời điểm trong tương lai.');
       } else if (needsDate) {
         throw new ProposalError('needs_date', 'Mốc thời gian này chưa có ngày cụ thể: Sale phải chọn ngày giờ trước khi duyệt.');
       }

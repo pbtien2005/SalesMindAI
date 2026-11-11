@@ -143,6 +143,16 @@ describe('timeline: không bao giờ tự điền ngày', () => {
     expect(JSON.stringify((await row(id)).value)).not.toContain('2026-11-14');
   });
 
+  it('ngày giờ hẹn trong quá khứ bị từ chối; bằng đúng lúc này thì được', async () => {
+    const { base, run } = await setup();
+    const id = await addProposal(db, base, run, { field: 'timeline', value: tl, flags: ['needs_clarification'] });
+    await expect(decide(base, id, { chosenAt: '2026-11-13T09:40:59+07:00' })).rejects.toMatchObject({ code: 'past_date' });
+    expect((await row(id)).status).toBe('pending');
+    expect(await profile(base)).toHaveLength(0);
+    expect(await db.select().from(tasks)).toHaveLength(0);
+    expect((await decide(base, id, { chosenAt: NOW.toISOString() })).status).toBe('accepted');
+  });
+
   it('ngày giờ sai dạng hoặc thiếu múi giờ thì bị từ chối', async () => {
     const { base, run } = await setup();
     const id = await addProposal(db, base, run, { field: 'timeline', value: tl, flags: ['needs_clarification'] });
