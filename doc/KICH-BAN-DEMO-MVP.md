@@ -5,7 +5,7 @@ Thời lượng: khoảng 8 phút 30 giây. Mọi cảnh đã xây và chạy đ
 
 ## 1. Ba điều khán giả phải nhớ
 
-1. **Mọi thứ AI trích đều có câu gốc.** Câu gốc hiện sẵn dưới mỗi giá trị (không cần rê chuột, để dùng được trên màn cảm ứng và bàn phím), đoạn khớp tô vàng trong chat.
+1. **Mọi thứ AI trích đều có câu gốc.** Ở Hộp đề xuất, câu gốc hiện sẵn. Ở Thẻ khách và Lịch sử duyệt, câu gốc thu gọn sau nút **Căn cứ** (một cú bấm, không cần rê chuột nên dùng được trên màn cảm ứng và bàn phím). Đoạn khớp tô vàng trong chat.
 2. **AI không tự đoán ngày.** "Cuối tuần này" hiện cờ hỏi lại, Sale chọn ngày.
 3. **AI đề xuất, Sale quyết định ở chỗ có hậu quả:** ngừng bám, tin gửi khách, xác nhận cọc, tạo đơn. Còn thông tin nhẹ (sản phẩm, ngân sách, tên) thì AI tự điền và gắn nhãn "chưa duyệt".
 
@@ -61,7 +61,8 @@ Tài liệu giả cần chuẩn bị: một ảnh bill chuyển khoản **tự d
 | Khách (Bạn A) | Gửi 2 tin cách nhau vài giây: **"Chào shop, anh đang tìm sofa phòng khách tầm 15 triệu"** rồi **"Có mẫu nào màu xám không em?"** | Màn Chat: hội thoại "Facebook: anh Minh" nhảy lên đầu Inbox, chấm xanh "Mới", tin hiện real-time | "Khách nhắn, không ai phải nhập tay." |
 | Lan | Mở hội thoại | Thẻ khách góc trái chỉ có tên Facebook. Dòng trạng thái: "Chưa có SĐT, Bám 0/5" | |
 | AI | Tự chạy, sau 3 giây (đã chỉnh từ 30 giây) | Thẻ khách tự điền: *Mẫu đã hỏi:* "sofa phòng khách, màu xám" · *Ngân sách:* "≈ 15.000.000 ₫ (khách nói 'tầm')". Cả hai có nhãn **AI điền, chưa duyệt**. **Hộp đề xuất vẫn trống** | "Thông tin nhẹ AI điền sẵn, Lan không phải bấm gì." |
-| Lan | Rê chuột vào dòng "Ngân sách" | Popup câu gốc: "…**tầm 15 triệu**" (đoạn khớp tô vàng) | "Mọi thông tin đều truy được về câu gốc." |
+| Lan | Bấm **Căn cứ** ở dòng "Ngân sách" | Câu gốc mở ngay tại dòng: "…**tầm 15 triệu**" (đoạn khớp tô vàng), có "xem trong chat" | "Mọi thông tin đều truy được về câu gốc." |
+| Lan | Bấm **Duyệt thông tin AI điền (2)** (một nút cho cả thẻ; muốn chỉnh dòng nào thì bấm Sửa trước) | Các dòng chuyển "**Đã duyệt bởi Lan, giờ**". Lịch sử duyệt ghi người duyệt; vẫn mở được **Căn cứ** ở đó | "Một cú bấm, và vẫn truy được căn cứ." |
 | Lan | Trả lời ở Page Inbox: **"Dạ em chào anh ạ. Em gửi anh vài mẫu sofa xám, nổi bật là Sofa Milan xám (SF-021) giá 12 triệu ạ. Anh cho em xin SĐT để em tư vấn thêm nhé."** | Tin của Page hiện trong chat, nhãn "Page Inbox". Inbox list: "Chờ khách trả lời 0 phút" | "Nhân viên vẫn trả lời ở công cụ quen thuộc, hệ thống thấy được." |
 
 ### Cảnh 2. Khách im lặng, hệ thống nhắc bám (1:00)

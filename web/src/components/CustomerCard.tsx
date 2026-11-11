@@ -3,7 +3,7 @@ import { formatTime } from '../api/format';
 import { useDecide } from '../api/hooks';
 import type { ConversationDetail } from '../api/types';
 import { buildCardRows, type CardRow } from '../lib/card';
-import { EvidenceQuote } from './EvidenceQuote';
+import { EvidenceToggle } from './EvidenceToggle';
 import { ErrorBanner } from './ErrorBanner';
 import { StatusChip } from './StatusChip';
 
@@ -24,7 +24,7 @@ function EditAiValue({ row }: { row: CardRow }) {
   }
   return (
     <form
-      className="mt-1 flex flex-wrap items-center gap-1.5"
+      className="mt-1 flex w-full flex-wrap items-center gap-1.5"
       onSubmit={(e) => {
         e.preventDefault();
         if (text.trim() !== '') decide.mutate({ proposalId: row.proposalId!, body: { action: 'edit', editedText: text.trim() } }, { onSuccess: () => setOpen(false) });
@@ -36,6 +36,34 @@ function EditAiValue({ row }: { row: CardRow }) {
       <button type="button" className="h-8 rounded-md border border-line-strong bg-white px-2.5 text-xs" onClick={() => setOpen(false)}>Hủy</button>
       {decide.error ? <div className="w-full"><ErrorBanner error={decide.error} /></div> : null}
     </form>
+  );
+}
+
+/** Một nút duyệt chung cho mọi dòng AI điền đang chờ. Sale vẫn là người bấm; Sửa từng dòng trước khi duyệt nếu cần. */
+function ApproveAllAi({ rows }: { rows: CardRow[] }) {
+  const decide = useDecide();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const pending = rows.filter((r) => r.state === 'ai' && r.proposalId);
+  if (pending.length === 0) return null;
+  const approve = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      for (const r of pending) await decide.mutateAsync({ proposalId: r.proposalId!, body: { action: 'accept' } });
+    } catch (e) {
+      setError(e); // dừng ở dòng đầu tiên thất bại
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <button type="button" disabled={busy} onClick={() => void approve()} className="h-9 w-full rounded-md border-0 bg-brand px-3 text-sm font-semibold text-white disabled:opacity-50">
+        {busy ? 'Đang duyệt…' : `Duyệt thông tin AI điền (${pending.length})`}
+      </button>
+      {error ? <div className="mt-2"><ErrorBanner error={error} /></div> : null}
+    </div>
   );
 }
 
@@ -72,6 +100,7 @@ export function CustomerCard({ detail, onJump }: { detail: ConversationDetail; o
   return (
     <div className="flex flex-col gap-3 px-[18px] py-4">
       <h2 className="m-0 text-[15px] font-bold">Thẻ khách</h2>
+      <ApproveAllAi rows={rows} />
       {rows.map((r) => (
         <div key={r.field}>
           <div className="text-xs text-ink-3">{r.label}</div>
@@ -79,10 +108,12 @@ export function CustomerCard({ detail, onJump }: { detail: ConversationDetail; o
             {r.text ? <span className="font-semibold">{r.text}</span> : <span className="text-[#5b6472]">{EMPTY_TEXT[r.state]}</span>}
             <StateChip row={r} />
           </div>
-          {r.state === 'ai' && EDITABLE.has(r.field) ? <EditAiValue row={r} /> : null}
-          {r.state === 'ai'
-            ? r.evidence.map((e, i) => <EvidenceQuote key={`${e.messageId}-${e.start}-${i}`} evidence={e} messages={detail.messages} onJump={onJump} />)
-            : null}
+          {r.state === 'ai' ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {EDITABLE.has(r.field) ? <EditAiValue row={r} /> : null}
+              <EvidenceToggle id={`evidence-${r.field}`} label={r.label} evidence={r.evidence} messages={detail.messages} onJump={onJump} />
+            </div>
+          ) : null}
         </div>
       ))}
       {detail.tasks.length > 0 ? (

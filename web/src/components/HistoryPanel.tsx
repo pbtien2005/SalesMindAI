@@ -3,7 +3,7 @@ import { useHistory } from '../api/hooks';
 import type { HistoryEntry, MessageView } from '../api/types';
 import { fieldLabel } from '../lib/fields';
 import { ErrorBanner } from './ErrorBanner';
-import { EvidenceQuote } from './EvidenceQuote';
+import { EvidenceToggle } from './EvidenceToggle';
 
 const STATUS: Record<string, string> = { accepted: 'đã duyệt', edited: 'đã sửa và duyệt', dismissed: 'đã bỏ qua', superseded: 'đã bị thay thế', pending: 'đang chờ duyệt' };
 
@@ -13,7 +13,7 @@ function line(h: HistoryEntry): string {
   return `AI đề xuất ${fieldLabel(h.field ?? '')}: ${v} · ${STATUS[h.status] ?? h.status}`;
 }
 
-/** Lịch sử đề xuất và quyết định của một hội thoại (ai duyệt, lúc nào, căn cứ). */
+/** Lịch sử đề xuất và quyết định của một hội thoại (ai duyệt, lúc nào). Câu gốc thu gọn sau nút "Căn cứ" cho đỡ lặp. */
 export function HistoryPanel({ conversationId, messages, onJump }: { conversationId: string; messages: MessageView[]; onJump: (id: string) => void }) {
   const q = useHistory(conversationId);
   const items = q.data?.history ?? [];
@@ -29,9 +29,7 @@ export function HistoryPanel({ conversationId, messages, onJump }: { conversatio
             <div className="text-xs text-ink-3">
               {h.decidedBy ? `bởi ${h.decidedBy}` : 'chưa có người quyết định'} · {formatDateTime(h.at)}
             </div>
-            {h.evidence.map((e, j) => (
-              <EvidenceQuote key={`${e.messageId}-${e.start}-${j}`} evidence={e} messages={messages} onJump={onJump} />
-            ))}
+            <EvidenceToggle id={`history-evidence-${i}`} label={h.kind === 'stop_followup' ? 'Ngừng bám' : fieldLabel(h.field ?? '')} evidence={h.evidence} messages={messages} onJump={onJump} />
           </li>
         ))}
       </ul>

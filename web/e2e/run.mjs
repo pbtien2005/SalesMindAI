@@ -164,7 +164,9 @@ async function run(n) {
   await simCustomer('Cảnh 1, tin 2');
   await openConversation('anh Minh');
   await expectText('AI điền, chưa duyệt', 'thẻ khách tự điền');
-  check((await body()).includes('Câu gốc'), 'Cảnh 1: mỗi giá trị AI điền có câu gốc');
+  check(!(await body()).includes('Câu gốc:'), 'Cảnh 1: câu gốc thu gọn mặc định');
+  await click('Căn cứ Ngân sách');
+  await expectText('Câu gốc:', 'bấm "Căn cứ" hiện câu gốc');
   await shot(`${n}-c1-the-khach`);
 
   // ---- Cảnh 2: ngừng bám Cô Mai.
