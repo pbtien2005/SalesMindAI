@@ -1,3 +1,6 @@
 node_modules
 dist
 *.local
+
+# Ảnh chụp của kịch bản Chrome (sinh ra khi chạy npm run e2e)
+e2e/shots/

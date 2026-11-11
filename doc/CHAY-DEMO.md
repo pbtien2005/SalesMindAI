@@ -1,4 +1,4 @@
-# Chạy demo (cảnh 0–3 và 6)
+# Chạy demo (cảnh 0–6)
 
 Kịch bản: [KICH-BAN-DEMO-MVP.md](KICH-BAN-DEMO-MVP.md). Kế hoạch: [PLAN-demo-mvp.md](PLAN-demo-mvp.md), [PLAN-backend.md](PLAN-backend.md).
 
@@ -21,7 +21,7 @@ npm install
 npm run db:migrate
 ```
 
-Trong `backend/.env` (sao chép từ `backend/.env.example`) đặt:
+Ảnh bill mẫu nằm ở `backend/demo-assets/` (tự dựng, không phải bill thật; dựng lại bằng `node scripts/make-demo-bills.mjs`, cần Chrome). Trong `backend/.env` (sao chép từ `backend/.env.example`) đặt:
 
 ```
 DEMO_MODE=true
@@ -53,6 +53,8 @@ Vite chuyển tiếp `/api` tới `127.0.0.1:3000`, nên backend không cần CO
 - Kiểm thử giao diện: `cd web && npm test` (Vitest, không cần backend). Kiểm tra kiểu: `npm run typecheck`.
 
 Thứ tự diễn gợi ý: Trang chủ (Lan) → Giả lập: "Cảnh 1: Thứ Năm 09:05", gửi hai tin cảnh 1 → mở Minh, thẻ khách tự điền → Lan trả lời → "Cảnh 2: Thứ Sáu 09:30", xác nhận ngừng bám cho Cô Mai → "Cảnh 3: Thứ Sáu 09:40", gửi tin cảnh 3 → duyệt SĐT, chọn ngày hẹn, duyệt mốc hẹn → Trang chủ → đổi sang chị Hà xem số liệu AI.
+
+**Kiểm tra tự động bằng Chrome:** backend chạy với `DEMO_MODE=true`, `AI_MODE=offline`, `AI_DEBOUNCE_SECONDS=3`, đã `npm run build` ở `web/`, rồi `cd web && npm run e2e` (đặt `E2E_RUNS=3` để chạy 3 lần; `CHROME_PATH` nếu Chrome không ở chỗ mặc định). Script đi hết cảnh 0 → 6 và hai biến thể, kiểm số liệu cuối kịch bản, thất bại nếu có lỗi console hoặc HTTP ≥ 400; ảnh chụp ở `web/e2e/shots/`.
 
 Nếu không dùng giao diện thì vẫn demo được bằng CLI và `curl` tới `/api/*`; mục bên dưới là cách đó.
 

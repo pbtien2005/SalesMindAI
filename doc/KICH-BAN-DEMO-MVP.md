@@ -102,7 +102,7 @@ Tài liệu giả cần chuẩn bị: một ảnh bill chuyển khoản **tự d
 
 | Ai | Thao tác | Hệ thống hiện | Lời dẫn |
 |---|---|---|---|
-| Người dẫn | Đổi vai sang **chị Hà**, mở Trang chủ | P1: **1** (chị Thu) · Quá hạn: **2** · Tiền cọc hôm nay: **6.000.000 ₫** (từ 0 ở đầu buổi) · Lịch nhắc: Anh Đức (đỏ), Chị Ngọc (đỏ), Anh Minh (xám) "Thứ Bảy 14/11 10:00, khách ghé xem". Dòng AI: **tự điền 3 · Sale sửa vì sai 0 · hỏi lại ngày 1 · đề xuất Sale đã duyệt 6** | "Chị Hà không phải hỏi từng người. Thấy ngay ai bị bỏ quên." |
+| Người dẫn | Đổi vai sang **chị Hà**, mở Trang chủ | P1: **1** (chị Thu) · Quá hạn: **2** · Tiền cọc hôm nay: **6.000.000 ₫** (từ 0 ở đầu buổi) · Lịch nhắc: Anh Đức (đỏ), Chị Ngọc (đỏ), Anh Minh (xanh) "Thứ Bảy 14/11 10:00, khách ghé xem". Dòng AI (số đo được khi chạy `web/e2e/run.mjs`, bộ trích offline): **tự điền 4 · Sale sửa vì sai 0 · hỏi lại ngày 1 · đề xuất Sale đã duyệt 7** (SĐT, mốc hẹn, ngừng bám, tin nháp đã gửi, khoản cọc, đơn đã tạo). Với Claude thật các số này có thể lệch | "Chị Hà không phải hỏi từng người. Thấy ngay ai bị bỏ quên." |
 | Chị Hà | Bấm thẻ **Quá hạn: 2**, rồi bấm Anh Đức | Danh sách 2 việc quá hạn. Mở Anh Đức: hội thoại, câu gốc làm căn cứ, lịch sử "AI đề xuất, ai duyệt, lúc nào" | "Có căn cứ, có người chịu trách nhiệm cho từng việc." |
 
 ### Cảnh 7. Kết (0:30)
