@@ -106,6 +106,7 @@ export interface MessageView {
   senderKind: string;
   text: string | null;
   hasAttachment: boolean;
+  attachments?: Array<{ type: 'image' | 'video' | 'audio' | 'file' | 'other'; url: string | null }>;
   sentAt: string;
 }
 

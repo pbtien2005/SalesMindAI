@@ -6,6 +6,7 @@ import { loadEnv } from './config/env.js';
 import { createTokenCrypto } from './crypto/token-crypto.js';
 import { createDb } from './db/client.js';
 import { GraphClient } from './meta/graph-client.js';
+import { fillCustomerNames } from './meta/profiles.js';
 import { handleBackfillConversation, handleBackfillPage, type BackfillDeps } from './backfill/backfill.js';
 import { createExtractor } from './extraction/factory.js';
 import { runExtraction } from './extraction/run.js';
@@ -125,6 +126,7 @@ await startWebhookWorker(boss, async (data) => {
     // Phân loại tin do Page gửi theo app_id của echo.
     sender: { ownAppId: env.FB_APP_ID, pageInboxAppIds: env.PAGE_INBOX_APP_IDS },
     afterStore: async (conversationIds) => {
+      await fillCustomerNames(dbHandle.db, graph, crypto, conversationIds, app.log).catch(() => undefined);
       await enqueueExtractions(dbHandle.db, extractQueue, conversationIds, env.AI_DEBOUNCE_SECONDS);
     },
   });

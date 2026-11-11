@@ -7,6 +7,7 @@ import type { Db } from '../db/client.js';
 import { conversations, followupState, pages, messages, profileFields, proposals, tasks } from '../db/schema.js';
 import { LIGHT_FIELDS, REVIEW_FIELDS, SIGNAL_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
 import { sendWindow } from '../send/window.js';
+import { toAttachmentViews, type AttachmentView } from '../meta/attachments.js';
 import { loadSummariesFor, type ConversationSummary } from '../followup/overview.js';
 
 const MAX_MESSAGES = 300;
@@ -17,6 +18,7 @@ export interface MessageView {
   senderKind: string;
   text: string | null;
   hasAttachment: boolean;
+  attachments: AttachmentView[];
   sentAt: Date;
 }
 
@@ -88,7 +90,7 @@ export async function loadConversationDetail(db: Db, tenantId: string, conversat
     .limit(MAX_MESSAGES);
   const msgs: MessageView[] = rows
     .reverse()
-    .map((m) => ({ id: m.id, direction: m.direction, senderKind: m.senderKind, text: m.text, hasAttachment: m.attachments !== null, sentAt: m.sentAt }));
+    .map((m) => ({ id: m.id, direction: m.direction, senderKind: m.senderKind, text: m.text, hasAttachment: m.attachments !== null, attachments: toAttachmentViews(m.attachments), sentAt: m.sentAt }));
 
   const pending = await db
     .select()

@@ -9,6 +9,30 @@ import { initial, senderLabel } from '../lib/fields';
 import { ErrorBanner } from './ErrorBanner';
 import { StatusChip } from './StatusChip';
 
+const KIND_LABEL: Record<string, string> = { image: 'Ảnh', video: 'Video', audio: 'Âm thanh', file: 'Tệp', other: 'Tệp đính kèm' };
+
+/** Ảnh hiện trực tiếp (URL đã được server lọc theo máy chủ của Facebook); loại khác hiện liên kết mở tab mới. */
+function Attachments({ items, hasText }: { items: NonNullable<MessageView['attachments']>; hasText: boolean }) {
+  if (items.length === 0) return <span className={hasText ? 'ml-1 opacity-80' : ''}>[Tệp đính kèm]</span>;
+  return (
+    <div className={`flex flex-col gap-1.5 ${hasText ? 'mt-2' : ''}`}>
+      {items.map((a, i) =>
+        a.type === 'image' && a.url ? (
+          <a key={i} href={a.url} target="_blank" rel="noopener noreferrer">
+            <img src={a.url} alt="Ảnh khách gửi" loading="lazy" referrerPolicy="no-referrer" className="max-h-64 max-w-full rounded-lg" />
+          </a>
+        ) : a.url ? (
+          <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="underline">
+            [{KIND_LABEL[a.type]}]
+          </a>
+        ) : (
+          <span key={i} className="opacity-80">[{KIND_LABEL[a.type]}]</span>
+        ),
+      )}
+    </div>
+  );
+}
+
 function Bubble({ m, ranges, flash }: { m: MessageView; ranges: ReturnType<typeof allEvidence>; flash: boolean }) {
   const inbound = m.direction === 'inbound';
   // Chỉ tô câu gốc trong tin của khách: tin của Page không bao giờ là căn cứ.
@@ -31,7 +55,7 @@ function Bubble({ m, ranges, flash }: { m: MessageView; ranges: ReturnType<typeo
               ),
             )
           : (m.text ?? '')}
-        {m.hasAttachment ? <span className={m.text ? 'ml-1 opacity-80' : ''}>[Tệp đính kèm]</span> : null}
+        {m.hasAttachment ? <Attachments items={m.attachments ?? []} hasText={Boolean(m.text)} /> : null}
       </div>
       <div className="mt-[3px] text-[11px] text-ink-3">
         {label ? <span className="mr-1 rounded bg-chip px-1.5 py-px font-semibold text-ink-2">{label}</span> : null}

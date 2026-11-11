@@ -313,6 +313,19 @@ export class GraphClient {
     return { id: m.id, createdAt, fromId: m.from?.id ?? null, toId: m.to?.data[0]?.id ?? null, text: m.message ?? null };
   }
 
+  /**
+   * Tên hiển thị của khách (`GET /{psid}?fields=name` với Page token). Trả null nếu Meta không cho tên
+   * (khách chặn, thiếu quyền). Tên field và điều kiện quyền chưa kiểm chứng với Page thật.
+   */
+  async getUserName(pageToken: string, psid: string): Promise<string | null> {
+    const raw = await this.#request('GET', encodeURIComponent(psid), { params: { fields: 'name' }, accessToken: pageToken });
+    const parsed = z.object({ name: z.string().optional() }).safeParse(raw);
+    if (!parsed.success) throw new GraphApiError('Phản hồi của Meta không đúng dạng (user.name).', 200, null, null, null);
+    // eslint-disable-next-line no-control-regex
+    const name = (parsed.data.name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 200);
+    return name === '' ? null : name;
+  }
+
   /** Đăng ký app nhận webhook của Page. Cần Page token và quyền `pages_manage_metadata`. */
   async subscribePage(
     fbPageId: string,

@@ -48,6 +48,25 @@ function serve(d: ConversationDetail) {
   });
 }
 
+describe('ChatView: tệp đính kèm', () => {
+  it('hiện ảnh khách gửi và dùng nhãn cho tệp không có URL an toàn', async () => {
+    const d = detail({
+      summary: summary({ id: 'c-a', displayName: 'Hoa' }),
+      messages: [
+        msg('m1', '', { text: null, hasAttachment: true, attachments: [{ type: 'image', url: 'https://scontent.xx.fbcdn.net/a.jpg' }, { type: 'file', url: null }] }),
+      ],
+    });
+    serve(d);
+    renderApp(<ChatView />);
+    await screen.findByRole('heading', { name: 'Hoa' });
+    const img = screen.getByAltText('Ảnh khách gửi');
+    expect(img.getAttribute('src')).toBe('https://scontent.xx.fbcdn.net/a.jpg');
+    expect(img.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(img.closest('a')?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(screen.getByText('[Tệp]')).toBeTruthy();
+  });
+});
+
 describe('ChatView (cảnh 3)', () => {
   it('mở hội thoại đầu tiên và tô câu gốc trong tin của khách', async () => {
     serve(scene3());
