@@ -36,6 +36,58 @@ Khách nhắn vào Page ─▶ AI trích xuất ─▶ Đề xuất việc ─�
 | 2 | **Mọi thông tin AI trích đều kèm câu gốc** | Mỗi trường có `evidence` là chuỗi con đã được kiểm chứng trong tin khách. Không lưu chuỗi do mô hình tự viết. |
 | 3 | **Mốc thời gian mơ hồ thì hỏi lại** | "Cuối tuần này" hiện cờ để Sale chọn ngày. Không có đường nào tự điền ngày. |
 
+## Nghiệp vụ
+
+### Ai dùng và để làm gì
+
+| Vai trò | Việc chính |
+|---|---|
+| **Sale** | Trả lời khách ở Page, duyệt đề xuất của AI, gửi tin, xác nhận cọc, tạo đơn |
+| **Quản lý** | Xem Trang chủ: ai đang chờ, việc nào trễ, tiền cọc hôm nay, lịch nhắc; lần lại "AI đề xuất gì, ai duyệt, lúc nào" |
+| **Chủ doanh nghiệp** (`owner`) | Vai trò cao nhất của một doanh nghiệp, cùng nhóm với quản lý, sale trong cách ly dữ liệu giữa các doanh nghiệp |
+
+### Vòng đời một khách
+
+```
+ Khách hỏi giá ──▶ AI điền thông tin nhẹ ──▶ Sale duyệt SĐT, mốc hẹn ──▶ Chốt đơn ──▶ Cọc bằng bill ──▶ Đơn hàng
+ (tin đầu tiên)   (sản phẩm, ngân sách, tên)  (mốc mơ hồ: Sale chọn ngày)  (đơn nháp)   (Sale xác nhận)    (mã DH-xxxx)
+        │                                                                      │
+        └── Khách im lặng ──▶ nhắc bám (tối đa 5 lần) ──▶ AI đề xuất ngừng bám ──▶ Sale xác nhận
+```
+
+### Hai tầng quyền của AI
+
+| Tầng | Ví dụ | Hành vi |
+|---|---|---|
+| **Tự điền** (nhãn "AI điền, chưa duyệt") | Sản phẩm đã hỏi, ngân sách, tên | Hiện sẵn trên Thẻ khách, Sale chỉ sửa khi sai |
+| **Phải duyệt** (qua Hộp đề xuất) | SĐT, mốc hẹn, ngừng bám, tin nháp gửi khách, xác nhận cọc, tạo đơn | Sale bấm Duyệt, Sửa hoặc Bỏ qua. Dòng do AI tạo chỉ ở trạng thái `draft`/`proposed`/`pending` cho tới khi người bấm |
+
+### Quy tắc nghiệp vụ
+
+| Chủ đề | Quy tắc |
+|---|---|
+| **Trả lời và bám khách** | Tin Page đầu tiên sau khách là *trả lời*. Mỗi tin Page tiếp theo cách mốc trước ít nhất 24 giờ là một *lần bám*, tối đa 5. Khách phản hồi thì bộ đếm về 0. Sau 24 giờ mà chưa bám thì hiện *đến hạn bám*. Đủ 5 lần và chờ thêm 24 giờ khách vẫn im thì AI **đề xuất** ngừng bám. Bộ đếm đếm hành động chăm sóc thật của nhân viên, không đếm ngày |
+| **Khách ưu tiên (P1)** | Khách có tín hiệu mua hoặc hỏi thanh toán mà chưa được trả lời quá 15 phút |
+| **Việc quá hạn** | Việc có hạn đã qua mà chưa hoàn thành, hiện ở Trang chủ và Lịch nhắc |
+| **Mốc thời gian** | "Cuối tuần này", "mai" không bao giờ được đổi thành ngày. Hiện cờ *Cần xác nhận*, ô chọn ngày để trống, Sale chọn rồi hệ thống mới nhắc đúng ngày đó |
+| **Tin của nhân viên ở Page Inbox** | Được lưu và ghi nhãn nguồn, để biết khách đã được trả lời chưa, kể cả khi nhân viên không dùng SalesMind |
+| **Đơn hàng** | Từ tin chốt đơn, AI soạn **đơn nháp** (tên, SĐT, mã hàng, số lượng, giá, địa chỉ còn thiếu) và **tin nháp** xác nhận. Gửi tin là việc của Sale |
+| **Cọc** | AI **chỉ đọc số tiền** từ ảnh bill và so với ngưỡng (mặc định 50% tổng đơn). Tiền đã về tài khoản chưa là do Sale kiểm tra rồi bấm *Xác nhận đã cọc*; sau đó mới cấp mã đơn `DH-xxxx` |
+| **Gửi tin cho khách** | Chỉ khi người dùng bấm gửi. Kiểm cửa sổ nhắn tin 24 giờ và trạng thái Page trước khi gọi Meta. Không có job hay cron nào tự gửi |
+
+Các ngưỡng 15 phút, 24 giờ, 5 lần bám và 50% cọc là **mặc định của bản demo**, cần xác nhận với từng doanh nghiệp trước khi dùng thật.
+
+### Ví dụ một buổi sáng của Sale
+
+1. **09:05** Khách nhắn "tìm sofa phòng khách tầm 15 triệu, màu xám". AI tự điền sản phẩm và ngân sách (≈ 15.000.000 ₫, có câu gốc "tầm 15 triệu").
+2. Khách im một ngày: Lịch nhắc báo **đến hạn bám lần 1/5**. Sale nhắn lại ở Page Inbox, bộ đếm thành 1/5.
+3. Khách trả lời, đưa SĐT và nói "cuối tuần này ghé shop". Hộp đề xuất có hai mục: SĐT (hợp lệ) và mốc hẹn **chưa có ngày**. Sale chọn Thứ Bảy 10:00 và duyệt cả hai bằng một nút.
+4. Khách "chốt luôn": AI soạn đơn nháp và tin xác nhận cọc 50%. Sale sửa một chữ, bấm Gửi.
+5. Khách gửi ảnh bill: AI đọc 6.000.000 ₫ (50%, đạt ngưỡng). Sale kiểm tra app ngân hàng, bấm xác nhận cọc, nhập địa chỉ, tạo đơn `DH-0001`.
+6. Quản lý mở Trang chủ: tiền cọc hôm nay tăng, lịch nhắc có hẹn Thứ Bảy, và thấy cả việc nào đang quá hạn.
+
+Kịch bản đầy đủ từng cảnh (khoảng 8 phút): [doc/KICH-BAN-DEMO-MVP.md](doc/KICH-BAN-DEMO-MVP.md).
+
 ## Tính năng
 
 **Tiếp nhận tin nhắn (Module 1)**
