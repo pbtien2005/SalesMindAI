@@ -14,7 +14,7 @@ import {
 import { backfillOverview, isBackfillRunning } from '../src/backfill/status.js';
 import { createTokenCrypto } from '../src/crypto/token-crypto.js';
 import { conversations, messages, pages, tenants } from '../src/db/schema.js';
-import { GraphApiError, type GraphMessage } from '../src/meta/graph-client.js';
+import { GraphApiError, type GraphMessage, type Participant } from '../src/meta/graph-client.js';
 import type { ParsedMessage } from '../src/meta/parse-webhook.js';
 import { storeInbound } from '../src/workers/store-messages.js';
 import { openTestDb, truncateAll } from './helpers/test-db.js';
@@ -62,6 +62,8 @@ interface GraphScript {
   /** Chi tiết từng tin; giá trị là lỗi thì ném. */
   details?: Record<string, GraphMessage | Error>;
   listError?: Error;
+  /** `participants` của từng hội thoại (tên khách). Giá trị là lỗi thì ném. Không khai báo: không có ai. */
+  participants?: Record<string, Participant[] | Error>;
 }
 
 function stubGraph(script: GraphScript) {
@@ -84,6 +86,11 @@ function stubGraph(script: GraphScript) {
       if (d instanceof Error) throw d;
       if (!d) throw new GraphApiError('không có', 400, 100, null, 'OAuthException');
       return d;
+    },
+    async getConversationParticipants(_token, conversationId) {
+      const p = script.participants?.[conversationId];
+      if (p instanceof Error) throw p;
+      return p ?? [];
     },
   };
   return { graph, calls };
@@ -227,6 +234,60 @@ describe('handleBackfillConversation', () => {
     expect(c!.lastPageMessageAt!.getTime()).toBe(T0 + 2000); // tin cuối của Page
   });
 
+  it('điền tên thật của khách từ participants của hội thoại; không lấy tên Page, không ghi đè tên đã có', async () => {
+    const { page } = await seedPage();
+    const { graph } = stubGraph({
+      convMessages: { [conv]: ids(['m_2', T0 + 2000], ['m_1', T0 + 1000]) },
+      details: { m_1: gm('m_1', 'PSID_A', 'hỏi giá', T0 + 1000), m_2: gm('m_2', FB_PAGE, 'dạ 5 triệu ạ', T0 + 2000, 'PSID_A') },
+      participants: { [conv]: [{ id: FB_PAGE, name: 'Tên của Page' }, { id: 'PSID_A', name: 'Nguyễn Thị Hoa' }] },
+    });
+    const stats = await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: conv });
+    expect(stats.named).toBe(1);
+    const [c] = await db.select().from(conversations);
+    expect(c).toMatchObject({ psid: 'PSID_A', displayName: 'Nguyễn Thị Hoa' });
+    expect((await db.select().from(conversations)).length).toBe(1); // Page không bị tạo thành khách
+
+    // Nhân viên đã sửa tên: lần chạy lại không được ghi đè.
+    await db.update(conversations).set({ displayName: 'Chị Hoa (VIP)' }).where(eq(conversations.id, c!.id));
+    const again = await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: conv });
+    expect(again).toMatchObject({ stored: 0, alreadyStored: 2, named: 0 });
+    expect((await db.select().from(conversations))[0]!.displayName).toBe('Chị Hoa (VIP)');
+  });
+
+  it('chạy lại backfill điền được tên cho hội thoại đã lưu từ trước mà chưa có tên (trường hợp 46 hội thoại cũ)', async () => {
+    const { page } = await seedPage();
+    const noNames = stubGraph({
+      convMessages: { [conv]: ids(['m_1', T0 + 1000]) },
+      details: { m_1: gm('m_1', 'PSID_A', 'hỏi giá', T0 + 1000) },
+    });
+    await handleBackfillConversation(deps(noNames.graph), { pageId: page.id, conversationId: conv });
+    expect((await db.select().from(conversations))[0]!.displayName).toBeNull();
+
+    const withNames = stubGraph({
+      convMessages: { [conv]: ids(['m_1', T0 + 1000]) },
+      participants: { [conv]: [{ id: 'PSID_A', name: 'Trần Văn Bình' }] },
+    });
+    const stats = await handleBackfillConversation(deps(withNames.graph), { pageId: page.id, conversationId: conv });
+    expect(stats).toMatchObject({ stored: 0, alreadyStored: 1, named: 1 });
+    expect((await db.select().from(conversations))[0]!.displayName).toBe('Trần Văn Bình');
+  });
+
+  it('Meta từ chối trả participants: job vẫn thành công, tin vẫn được lưu, log chỉ có mã lỗi (không tên)', async () => {
+    const { page } = await seedPage();
+    const { graph } = stubGraph({
+      convMessages: { [conv]: ids(['m_1', T0 + 1000]) },
+      details: { m_1: gm('m_1', 'PSID_A', 'hỏi giá', T0 + 1000) },
+      participants: { [conv]: new GraphApiError('từ chối', 400, 100, 33, 'GraphMethodException') },
+    });
+    logs.length = 0;
+    const stats = await handleBackfillConversation(deps(graph), { pageId: page.id, conversationId: conv });
+    expect(stats).toMatchObject({ stored: 1, named: 0 });
+    expect((await db.select().from(conversations))[0]!.displayName).toBeNull();
+    const warn = logs.find((l) => l.level === 'warn' && JSON.stringify(l.obj).includes('"code":100'));
+    expect(warn).toBeDefined();
+    expect(JSON.stringify(logs)).not.toContain('PSID_A');
+  });
+
   it('khách im sau khi nhân viên trả lời: last_user_interaction_at dừng ở tin cuối của khách, không bị tin của Page kéo lên', async () => {
     const { page } = await seedPage();
     const { graph } = stubGraph({
@@ -352,6 +413,7 @@ describe('handleBackfillConversation', () => {
     const net = new GraphApiError('Không gọi được Graph API (TimeoutError).', null, null, null, null);
     const graph: BackfillDeps['graph'] = {
       listConversations: async () => ({ conversations: [] }),
+      getConversationParticipants: async () => [],
       listConversationMessages: async () => {
         throw net;
       },

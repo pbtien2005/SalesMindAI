@@ -122,6 +122,25 @@ const messageResponse = z.object({
   message: z.string().optional(),
 });
 
+// `participants` của Conversations API (Messenger): mỗi người có `id` và `name`. Đã kiểm với Page thật: trả được tên
+// của khách thật, kể cả khi User Profile API (`GET /{psid}?fields=name`) bị từ chối vì app chưa được duyệt quyền.
+const participantsBlock = z.object({
+  participants: z.object({ data: z.array(z.object({ id: z.string().min(1), name: z.string().optional() })) }).optional(),
+});
+const conversationsByUserResponse = z.object({ data: z.array(participantsBlock) });
+
+/** Người tham gia một hội thoại (khách hoặc Page). `name` null nếu Meta không trả. */
+export interface Participant {
+  id: string;
+  name: string | null;
+}
+
+// Bỏ ký tự điều khiển, cắt độ dài: tên đến từ bên ngoài nên không tin.
+// eslint-disable-next-line no-control-regex
+const cleanName = (s: string | undefined) => (s ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 200);
+const toParticipants = (b: z.infer<typeof participantsBlock>): Participant[] =>
+  (b.participants?.data ?? []).map((p) => ({ id: p.id, name: cleanName(p.name) || null }));
+
 export interface ConversationRef {
   id: string;
   updatedTime: string | null;
@@ -313,17 +332,42 @@ export class GraphClient {
     return { id: m.id, createdAt, fromId: m.from?.id ?? null, toId: m.to?.data[0]?.id ?? null, text: m.message ?? null };
   }
 
+  /** Những người tham gia một hội thoại (`GET /{conversation-id}?fields=participants`). Gồm cả Page: người gọi tự lọc. */
+  async getConversationParticipants(pageToken: string, conversationId: string): Promise<Participant[]> {
+    const raw = await this.#request('GET', encodeURIComponent(conversationId), {
+      params: { fields: 'participants' },
+      accessToken: pageToken,
+    });
+    return toParticipants(parseBody(participantsBlock, raw, 'conversation.participants'));
+  }
+
+  /** Hội thoại của một khách với Page, tìm theo PSID (`GET /{page-id}/conversations?user_id=...`). */
+  async findParticipantsByUserId(pageToken: string, fbPageId: string, psid: string): Promise<Participant[]> {
+    const raw = await this.#request('GET', `${encodeURIComponent(fbPageId)}/conversations`, {
+      params: { platform: 'messenger', user_id: psid, fields: 'participants', limit: '1' },
+      accessToken: pageToken,
+    });
+    return parseBody(conversationsByUserResponse, raw, 'conversations.user_id').data.flatMap(toParticipants);
+  }
+
   /**
-   * Tên hiển thị của khách (`GET /{psid}?fields=name` với Page token). Trả null nếu Meta không cho tên
-   * (khách chặn, thiếu quyền). Tên field và điều kiện quyền chưa kiểm chứng với Page thật.
+   * Tên hiển thị của khách. Thử User Profile API (`GET /{psid}?fields=name`) trước. Khi Meta từ chối (400, mã 100:
+   * app chưa được duyệt quyền thì chỉ đọc được người có vai trò trong app) hoặc không trả tên, và có `fbPageId`, thì lấy
+   * từ Conversations API (`participants`), nguồn đã kiểm với Page thật. Trả null nếu không nguồn nào có tên.
    */
-  async getUserName(pageToken: string, psid: string): Promise<string | null> {
-    const raw = await this.#request('GET', encodeURIComponent(psid), { params: { fields: 'name' }, accessToken: pageToken });
-    const parsed = z.object({ name: z.string().optional() }).safeParse(raw);
-    if (!parsed.success) throw new GraphApiError('Phản hồi của Meta không đúng dạng (user.name).', 200, null, null, null);
-    // eslint-disable-next-line no-control-regex
-    const name = (parsed.data.name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 200);
-    return name === '' ? null : name;
+  async getUserName(pageToken: string, psid: string, fbPageId?: string): Promise<string | null> {
+    try {
+      const raw = await this.#request('GET', encodeURIComponent(psid), { params: { fields: 'name' }, accessToken: pageToken });
+      const parsed = z.object({ name: z.string().optional() }).safeParse(raw);
+      if (!parsed.success) throw new GraphApiError('Phản hồi của Meta không đúng dạng (user.name).', 200, null, null, null);
+      const name = cleanName(parsed.data.name);
+      if (name !== '') return name;
+    } catch (err) {
+      const denied = err instanceof GraphApiError && err.httpStatus === 400 && err.code === 100;
+      if (!fbPageId || !denied) throw err;
+    }
+    if (!fbPageId) return null;
+    return (await this.findParticipantsByUserId(pageToken, fbPageId, psid)).find((p) => p.id === psid)?.name ?? null;
   }
 
   /** Đăng ký app nhận webhook của Page. Cần Page token và quyền `pages_manage_metadata`. */

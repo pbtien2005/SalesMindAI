@@ -62,7 +62,7 @@ Tài liệu giả cần chuẩn bị: một ảnh bill chuyển khoản **tự d
 | Lan | Mở hội thoại | Thẻ khách góc trái chỉ có tên Facebook. Dòng trạng thái: "Chưa có SĐT, Bám 0/5" | |
 | AI | Tự chạy, sau 3 giây (đã chỉnh từ 30 giây) | Thẻ khách tự điền: *Mẫu đã hỏi:* "sofa phòng khách, màu xám" · *Ngân sách:* "≈ 15.000.000 ₫ (khách nói 'tầm')". Cả hai có nhãn **AI điền, chưa duyệt**. **Hộp đề xuất vẫn trống** | "Thông tin nhẹ AI điền sẵn, Lan không phải bấm gì." |
 | Lan | Bấm **Căn cứ** ở dòng "Ngân sách" | Câu gốc mở ngay tại dòng: "…**tầm 15 triệu**" (đoạn khớp tô vàng), có "xem trong chat" | "Mọi thông tin đều truy được về câu gốc." |
-| Lan | Bấm **Duyệt thông tin AI điền (2)** (một nút cho cả thẻ; muốn chỉnh dòng nào thì bấm Sửa trước) | Các dòng chuyển "**Đã duyệt bởi Lan, giờ**". Lịch sử duyệt ghi người duyệt; vẫn mở được **Căn cứ** ở đó | "Một cú bấm, và vẫn truy được căn cứ." |
+| Lan | Bấm **Duyệt n mục** ở Hộp đề xuất (một nút duy nhất cho cả SĐT, địa chỉ, mốc hẹn và các dòng AI điền; mốc hẹn mơ hồ phải chọn ngày trước; muốn chỉnh dòng nào thì bấm Sửa trước) | Các dòng chuyển "**Đã duyệt bởi Lan, giờ**". Lịch sử duyệt ghi người duyệt; vẫn mở được **Căn cứ** ở đó | "Một cú bấm, và vẫn truy được căn cứ." |
 | Lan | Trả lời ở Page Inbox: **"Dạ em chào anh ạ. Em gửi anh vài mẫu sofa xám, nổi bật là Sofa Milan xám (SF-021) giá 12 triệu ạ. Anh cho em xin SĐT để em tư vấn thêm nhé."** | Tin của Page hiện trong chat, nhãn "Page Inbox". Inbox list: "Chờ khách trả lời 0 phút" | "Nhân viên vẫn trả lời ở công cụ quen thuộc, hệ thống thấy được." |
 
 ### Cảnh 2. Khách im lặng, hệ thống nhắc bám (1:00)

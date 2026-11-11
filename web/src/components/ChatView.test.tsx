@@ -108,24 +108,26 @@ describe('ChatView (cảnh 3)', () => {
     expect(within(chat).queryAllByText('Khách, 09:12').length).toBe(1);
   });
 
-  it('thẻ khách: trường nhẹ "AI điền, chưa duyệt", SĐT chờ duyệt, ngày hẹn "Cần xác nhận"', async () => {
+  it('thẻ khách: SĐT và trường nhẹ là "AI điền, chưa duyệt", ngày hẹn "Cần xác nhận"', async () => {
     serve(scene3());
     renderApp(<ChatView />);
     await screen.findByRole('heading', { name: 'Minh' });
     const card = screen.getByRole('heading', { name: 'Thẻ khách' }).parentElement as HTMLElement;
     expect(within(card).getByText('Sofa phòng khách, màu xám')).toBeTruthy();
     expect(within(card).getByText('15 triệu')).toBeTruthy();
-    expect(within(card).getAllByText('AI điền, chưa duyệt').length).toBe(2);
-    expect(within(card).getByText('Chưa có, đang chờ duyệt đề xuất')).toBeTruthy();
+    expect(within(card).getByText('0912 345 678')).toBeTruthy();
+    expect(within(card).getAllByText('AI điền, chưa duyệt').length).toBe(3);
+    expect(within(card).getByRole('button', { name: 'Duyệt thông tin AI điền (3)' })).toBeTruthy();
     expect(within(card).getByText('Cần xác nhận')).toBeTruthy();
     expect(within(card).getByText('Chưa có ngày')).toBeTruthy();
     expect(within(card).getAllByText('Thiếu')).toHaveLength(3); // tên, số lượng, địa chỉ còn thiếu
   });
 
-  it('Hộp đề xuất có 2 mục và nút Duyệt mốc hẹn đang khóa', async () => {
+  it('Hộp đề xuất chỉ còn mốc hẹn mơ hồ (SĐT sang Thẻ khách), nút Duyệt khóa tới khi chọn ngày', async () => {
     serve(scene3());
     renderApp(<ChatView />);
-    expect(await screen.findByText('2 chờ duyệt')).toBeTruthy();
+    expect(await screen.findByText('1 chờ duyệt')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Duyệt (chọn ngày trước)' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Duyệt (chọn ngày trước)' }) as HTMLButtonElement).disabled).toBe(true);
   });
 

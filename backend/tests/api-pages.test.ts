@@ -85,14 +85,13 @@ async function connectVia(who: Who) {
 }
 
 describe('kết nối Page trong giao diện', () => {
-  it('quyền: sale 403; chưa xác minh email 403; app Meta chưa cấu hình 503', async () => {
+  it('quyền: sale 403; chưa xác minh email vẫn kết nối được; app Meta chưa cấu hình 503', async () => {
     const sale = await seed('A', 'sale');
     expect((await call(sale, 'POST', '/api/pages/connect-url')).statusCode).toBe(403);
     expect((await call(sale, 'GET', '/api/pages')).statusCode).toBe(403);
     const unverified = await seed('B', 'manager', false);
     const r = await call(unverified, 'POST', '/api/pages/connect-url');
-    expect(r.statusCode).toBe(403);
-    expect(r.json().error.code).toBe('email_not_verified');
+    expect(r.statusCode).toBe(200);
     app = makeApp(false);
     const ok = await seed('C', 'manager');
     expect((await call(ok, 'POST', '/api/pages/connect-url')).json().error.code).toBe('facebook_not_configured');

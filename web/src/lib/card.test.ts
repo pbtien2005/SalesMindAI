@@ -21,9 +21,9 @@ describe('buildCardRows', () => {
     expect(rowOf(d, 'budget')).toMatchObject({ state: 'ai', text: '15 triệu', evidence: [ev] });
   });
 
-  it('SĐT đang chờ trong Hộp đề xuất: chưa có giá trị trên thẻ', () => {
-    const d = detail({ box: [{ kind: 'proposal', ...proposal({ id: 'p2', field: 'phone', value: { text: '0912 345 678' } }) }] });
-    expect(rowOf(d, 'phone')).toMatchObject({ state: 'pending_review', text: '' });
+  it('SĐT AI đề xuất (chờ duyệt): hiện trên thẻ như dòng AI điền, duyệt chung và sửa được', () => {
+    const d = detail({ box: [{ kind: 'proposal', ...proposal({ id: 'p2', field: 'phone', value: { text: '0912345678' } }) }] });
+    expect(rowOf(d, 'phone')).toMatchObject({ state: 'ai', text: '0912 345 678', proposalId: 'p2' });
   });
 
   it('mốc hẹn mơ hồ: needs_date và KHÔNG có ngày', () => {

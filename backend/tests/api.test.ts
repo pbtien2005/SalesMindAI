@@ -74,7 +74,7 @@ describe('kịch bản demo cảnh 0–3 và 6, chỉ qua API', () => {
     expect(new Date(now0.now).getTime()).toBeGreaterThanOrEqual(vn(2026, 11, 12, 9, 0).getTime());
     expect(new Date(now0.now).getTime()).toBeLessThan(vn(2026, 11, 12, 9, 1).getTime());
     const home0 = (await call('GET', '/api/home')).json;
-    expect(home0.p1.map((c: any) => c.displayName)).toEqual(['Chị Thu']);
+    expect(home0.p1.map((c: any) => c.displayName).sort()).toEqual(['Anh Đức', 'Chị Ngọc', 'Chị Thu']);
     expect(home0.overdue).toHaveLength(2);
     expect(home0.ai).toEqual({ autoFilled: 0, saleEdited: 0, askedDate: 0, approved: 0 });
 
@@ -166,7 +166,7 @@ describe('kịch bản demo cảnh 0–3 và 6, chỉ qua API', () => {
     // ----- Cảnh 6: chị Hà xem Trang chủ.
     const homeHa = (await call('GET', '/api/home', undefined, 'ha')).json;
     expect(homeHa.role).toBe('manager');
-    expect(homeHa.p1.map((c: any) => c.displayName)).toEqual(['Chị Thu']);
+    expect(homeHa.p1.map((c: any) => c.displayName).sort()).toEqual(['Anh Đức', 'Chị Ngọc', 'Chị Thu']);
     expect(homeHa.overdue.map((t: any) => t.displayName).sort()).toEqual(['Anh Đức', 'Chị Ngọc']);
     expect(homeHa.ai).toEqual({ autoFilled: 3, saleEdited: 0, askedDate: 1, approved: 3 });
     const upcoming = homeHa.reminders.find((r: any) => r.kind === 'upcoming');

@@ -15,6 +15,7 @@ import { DEMO_IMAGE_FILES, SimError, simulateCustomerImage, simulateCustomerMess
 import { advanceClock, advanceClockTo } from '../demo/clock.js';
 import { type DemoContext, getDemoContext, resetDemo } from '../demo/seed.js';
 import { PERSONAS, type WebhookPoster } from '../demo/simulator.js';
+import { CUSTOMER_STATUSES, setCustomerStatus } from '../customers/status.js';
 import { decideProposal, ProposalError } from '../extraction/proposals.js';
 import { FollowupError, stopFollowup } from '../followup/followup.js';
 import { loadHome, loadOrders } from '../followup/overview.js';
@@ -144,6 +145,18 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
       }
       throw e;
     }
+  });
+
+  // Trạng thái khách: mọi vai trò (sale, manager, owner) đặt được cho hội thoại của doanh nghiệp mình. Chỉ người bấm mới đổi.
+  const statusBody = z.object({ status: z.enum(CUSTOMER_STATUSES) });
+  app.post<{ Params: { id: string } }>('/api/conversations/:id/status', async (req, reply) => {
+    const a = req.auth!;
+    if (!uuid.safeParse(req.params.id).success) return err(reply, 404, 'not_found', 'Không có hội thoại này.');
+    const b = statusBody.safeParse(req.body);
+    if (!b.success) return err(reply, 400, 'invalid', 'Trạng thái khách không hợp lệ.');
+    const r = await setCustomerStatus(db, { tenantId: a.tenantId, conversationId: req.params.id, status: b.data.status, by: a.displayName, userId: a.userId }, await nowOf(a.tenantId));
+    if (!r) return err(reply, 404, 'not_found', 'Không có hội thoại này.');
+    return { status: r.current.status, by: r.current.by, at: r.current.at, changed: r.changed };
   });
 
   app.post<{ Params: { id: string } }>('/api/conversations/:id/stop-followup', async (req, reply) => {

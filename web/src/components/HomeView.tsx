@@ -3,6 +3,7 @@ import { daysOverdue, formatDateTime, formatVnd, formatWait } from '../api/forma
 import { useHome } from '../api/hooks';
 import type { HomeData, Reminder } from '../api/types';
 import { useSession } from '../state/session';
+import { ConnectPageCard } from './ConnectPageCard';
 import { ErrorBanner } from './ErrorBanner';
 import { Main } from './Main';
 
@@ -102,7 +103,7 @@ function AiStatsBlock({ ai }: { ai: HomeData['ai'] }) {
   return (
     <section aria-label="Số liệu AI" className="rounded-xl border border-line bg-white p-4">
       <h2 className="m-0 mb-2.5 text-[15px] font-bold">AI đã làm gì</h2>
-      <dl className="m-0 grid grid-cols-4 gap-3.5">
+      <dl className="m-0 grid grid-cols-2 gap-3.5 md:grid-cols-4">
         {items.map((it) => (
           <div key={it.label}>
             <dd className="m-0 text-2xl font-bold tabular-nums text-ink">{it.value}</dd>
@@ -118,7 +119,7 @@ function AiStatsBlock({ ai }: { ai: HomeData['ai'] }) {
 /** Trang chủ quản lý (cảnh 0 và 6). */
 export function HomeView() {
   const home = useHome();
-  const { me, role, openConversation, setView } = useSession();
+  const { me, role, openConversation, openInbox, setView } = useSession();
 
   if (home.error) {
     return (
@@ -136,26 +137,39 @@ export function HomeView() {
   const dueFollow = followups.filter((r) => r.dueAt !== null && new Date(r.dueAt).getTime() <= new Date(h.now).getTime()).length;
   const following = followups.length;
   const stopIds = new Set(h.suggestStop.map((s) => s.id));
-  const first = h.p1[0];
+  // P1 = chờ Page trả lời quá lâu. Thẻ chỉ nêu người chờ lâu nhất; danh sách đầy đủ xem ở hộp thư (lọc P1).
+  const first = [...h.p1].sort((a, b) => (b.waitingMinutes ?? 0) - (a.waitingMinutes ?? 0))[0];
+  const p1Detail = !first
+    ? 'Không có khách nào chờ quá lâu'
+    : `Chờ lâu nhất: ${first.displayName}${first.waitingMinutes !== null ? `, ${formatWait(first.waitingMinutes)}` : ''}`;
 
   return (
-    <Main className="flex flex-col gap-[18px] overflow-auto px-7 py-6">
-      <div className="flex items-baseline gap-3">
+    <Main className="flex flex-col gap-[18px] overflow-auto px-4 py-6 md:px-7">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h1 className="m-0 text-[22px] font-bold">{role === 'sale' ? `Trang chủ của ${me.displayName}` : `Trang chủ, đội của ${me.displayName}`}</h1>
         <span className="text-ink-3">{formatDateTime(h.now)}</span>
       </div>
 
-      <div className="grid grid-cols-4 gap-3.5">
+      <ConnectPageCard />
+
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           accent="red"
           label="Khách ưu tiên P1"
           value={h.p1.length}
-          detail={h.p1.length === 0 ? 'Không có khách nào chờ quá lâu' : h.p1.map((c) => `${c.displayName}${c.waitingMinutes !== null ? `, chờ ${formatWait(c.waitingMinutes)}` : ''}`).join('; ')}
+          detail={p1Detail}
           action={
             first ? (
-              <button type="button" onClick={() => openConversation(first.id)} className="mt-2 border-0 bg-transparent p-0 text-[13px] font-semibold text-brand underline">
-                Mở hội thoại
-              </button>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                <button type="button" onClick={() => openConversation(first.id)} className="border-0 bg-transparent p-0 text-[13px] font-semibold text-brand underline">
+                  Mở hội thoại
+                </button>
+                {h.p1.length > 1 ? (
+                  <button type="button" onClick={() => openInbox('p1')} className="border-0 bg-transparent p-0 text-[13px] font-semibold text-brand underline">
+                    Xem tất cả {h.p1.length} khách
+                  </button>
+                ) : null}
+              </div>
             ) : null
           }
         />

@@ -1,0 +1,53 @@
+# Triển khai thật (VM Oracle). Chạy ở gốc repo:
+#   docker compose -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
+# Không đụng docker-compose.yml (dùng cho dev). Postgres KHÔNG mở cổng ra ngoài.
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: salesmind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?đặt POSTGRES_PASSWORD trong deploy/.env.prod}
+      POSTGRES_DB: salesmind
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U salesmind -d salesmind"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    image: salesmind
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: backend/.env.docker
+    environment:
+      DATABASE_URL: postgres://salesmind:${POSTGRES_PASSWORD}@postgres:5432/salesmind
+      TRUST_PROXY: "true"
+    expose:
+      - "3000"
+
+  # Caddy tự xin và gia hạn chứng chỉ HTTPS (Let's Encrypt) cho tên miền DuckDNS.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?đặt DOMAIN trong deploy/.env.prod}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

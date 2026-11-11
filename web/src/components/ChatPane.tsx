@@ -207,7 +207,7 @@ export function ChatPane({ detail, flashId }: { detail: ConversationDetail; flas
             {send.error ? <ErrorBanner error={send.error} /> : null}
           </>
         ) : !detail.reply.pageActive ? (
-          <div role="alert" className="text-sm text-amber">Page này cần được kết nối lại (mục Page Facebook) trước khi gửi tin.</div>
+          <div role="alert" className="text-sm text-amber">Page này cần được kết nối lại (nút Page ở đầu thanh bên, mục Quản lý Page) trước khi gửi tin.</div>
         ) : !detail.reply.open ? (
           <div role="status" className="text-sm text-ink-2">
             Đã quá 24 giờ kể từ tin cuối của khách, Facebook không cho gửi tin chủ động. Hãy chờ khách nhắn lại, hoặc trả lời bằng công cụ khác của Page.

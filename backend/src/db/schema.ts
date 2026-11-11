@@ -21,6 +21,8 @@ const id = () => uuid('id').primaryKey().default(sql`uuidv7()`);
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 
 export const pageStatus = pgEnum('page_status', ['active', 'token_invalid', 'disconnected']);
+/** Trạng thái khách do Sale đặt tay (AI không tự đổi): mới, đang tư vấn, đã báo giá, đã chốt, không mua. */
+export const customerStatus = pgEnum('customer_status', ['new', 'consulting', 'quoted', 'won', 'lost']);
 export const messageSource = pgEnum('message_source', ['webhook', 'backfill', 'send']);
 /** Hướng của tin: từ khách tới Page, hay từ Page tới khách (echo, hoặc tin Page gửi lấy qua backfill). */
 export const messageDirection = pgEnum('message_direction', ['inbound', 'outbound']);
@@ -123,6 +125,11 @@ export const conversations = pgTable(
     lastUserInteractionAt: timestamp('last_user_interaction_at', { withTimezone: true }),
     /** Lần cuối PAGE gửi tin (echo hoặc backfill), kể cả tin do nhân viên gõ ở Page Inbox. */
     lastPageMessageAt: timestamp('last_page_message_at', { withTimezone: true }),
+    /** Trạng thái khách do Sale đặt (xem `src/customers/status.ts`). Mặc định `new`. */
+    customerStatus: customerStatus('customer_status').notNull().default('new'),
+    /** Tên người đổi trạng thái gần nhất và lúc đó; null nếu chưa ai đổi. */
+    customerStatusBy: text('customer_status_by'),
+    customerStatusAt: timestamp('customer_status_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [

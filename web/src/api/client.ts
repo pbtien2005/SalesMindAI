@@ -7,6 +7,7 @@ import type {
   OrderRow,
   HomeData,
   ConversationSummary,
+  CustomerStatus,
   Persona,
   AuthConfig,
   AiStatus,
@@ -126,6 +127,8 @@ export const api = {
   resetDemo: () => post<{ now: string }>('/api/demo/reset'),
 
   decide: (proposalId: string, body: DecideBody) => post<DecideResult>(`/api/proposals/${encodeURIComponent(proposalId)}/decide`, body),
+  setCustomerStatus: (conversationId: string, status: CustomerStatus) =>
+    post<{ status: CustomerStatus; by: string | null; at: string | null; changed: boolean }>(`/api/conversations/${encodeURIComponent(conversationId)}/status`, { status }),
   stopFollowup: (conversationId: string) => post<{ stopped: true }>(`/api/conversations/${encodeURIComponent(conversationId)}/stop-followup`),
 
   customerMessage: (target: { persona: string } | { conversationId: string }, text: string) =>

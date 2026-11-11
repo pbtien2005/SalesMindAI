@@ -55,7 +55,14 @@ export interface ConversationSummary {
   nextContact?: { at: string; reason: string } | null;
   /** Câu gốc báo khách chốt mua. */
   closeSignal?: { text: string; messageId: string } | null;
+  /** Trạng thái khách do Sale đặt tay (khác `stage`, vốn tự tính). */
+  customerStatus: CustomerStatus;
+  /** Người đổi trạng thái gần nhất; null nếu chưa ai đổi. */
+  customerStatusBy: string | null;
+  customerStatusAt: string | null;
 }
+
+export type CustomerStatus = 'new' | 'consulting' | 'quoted' | 'won' | 'lost';
 
 export type ReminderKind = 'overdue' | 'followup' | 'upcoming';
 

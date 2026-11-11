@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Role } from '../api/types';
 import { useSession, type View } from '../state/session';
+import { PageSwitcher } from './PageSwitcher';
 
 const icon = (path: ReactNode) => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -31,12 +32,6 @@ const ITEMS: Array<{ view: View; label: string; icon: ReactNode; roles?: Role[] 
     ),
   },
   {
-    view: 'pages',
-    label: 'Page Facebook',
-    roles: ['owner', 'manager'],
-    icon: icon(<path d="M4 4h16v12H8l-4 4V4z" />),
-  },
-  {
     view: 'ai',
     label: 'AI',
     roles: ['owner', 'manager'],
@@ -60,6 +55,7 @@ export function SideNav() {
   const { view, setView, role } = useSession();
   return (
     <nav aria-label="Điều hướng" className="flex w-16 flex-none flex-col items-center gap-1.5 border-r border-line bg-white pt-3">
+      <PageSwitcher />
       {ITEMS.filter((it) => !it.roles || it.roles.includes(role)).map((it) => {
         const active = view === it.view;
         return (

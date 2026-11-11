@@ -149,6 +149,7 @@ const backfillDeps: BackfillDeps = {
   crypto,
   queue: createBackfillQueue(boss),
   log: app.log,
+  // Tên khách ở backfill do chính job lấy từ `participants` của hội thoại (xem handleBackfillConversation).
 };
 stopMonitor = startQueueMonitor(boss, app.log);
 

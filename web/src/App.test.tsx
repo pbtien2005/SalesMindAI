@@ -62,7 +62,8 @@ describe('Trang chủ (cảnh 0)', () => {
     expect(await screen.findByRole('heading', { name: 'Trang chủ của Lan' })).toBeTruthy();
     const main = screen.getByRole('main');
     expect(within(main).getByText('Khách ưu tiên P1').nextElementSibling?.textContent).toBe('1');
-    expect(within(main).getByText('Chị Thu, chờ 22 phút')).toBeTruthy();
+    expect(within(main).getByText('Chờ lâu nhất: Chị Thu, 22 phút')).toBeTruthy();
+    expect(within(main).queryByRole('button', { name: /Xem tất cả/ })).toBeNull(); // chỉ 1 khách P1: không cần "Xem tất cả"
     expect(within(main).getByText('Việc quá hạn', { selector: 'div' }).nextElementSibling?.textContent).toBe('2');
     expect(within(main).getByText('Anh Đức, Chị Ngọc')).toBeTruthy();
     expect(within(main).getByText('Lịch nhắc sắp tới').nextElementSibling?.textContent).toBe('2');

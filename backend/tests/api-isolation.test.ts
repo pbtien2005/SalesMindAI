@@ -105,6 +105,7 @@ const as = (t: Tenant, method: Method, url: string, body?: unknown) => {
 const CASES: Record<string, (b: Tenant) => { method: Method; url: string; body?: unknown }> = {
   'GET /api/conversations/:id': (b) => ({ method: 'GET', url: `/api/conversations/${b.conversationId}` }),
   'GET /api/conversations/:id/history': (b) => ({ method: 'GET', url: `/api/conversations/${b.conversationId}/history` }),
+  'POST /api/conversations/:id/status': (b) => ({ method: 'POST', url: `/api/conversations/${b.conversationId}/status`, body: { status: 'won' } }),
   'POST /api/conversations/:id/stop-followup': (b) => ({ method: 'POST', url: `/api/conversations/${b.conversationId}/stop-followup` }),
   'POST /api/team/invites/:id/revoke': (b) => ({ method: 'POST', url: `/api/team/invites/${b.inviteId}/revoke` }),
   'PATCH /api/team/members/:userId': (b) => ({ method: 'PATCH', url: `/api/team/members/${b.userId}`, body: { role: 'sale' } }),

@@ -112,3 +112,45 @@ describe('CustomerCard: căn cứ thu gọn', () => {
     expect(screen.getByRole('button', { name: 'Căn cứ Ngân sách' }).getAttribute('aria-expanded')).toBe('false');
   });
 });
+
+describe('CustomerCard: trạng thái khách', () => {
+  const withStatus = (over: Partial<ReturnType<typeof summary>>) => detail({ summary: summary({ id: 'c1', displayName: 'Minh', ...over }), messages: [msg('m1', T1)] });
+  const group = () => screen.getByRole('group', { name: 'Trạng thái khách' });
+
+  it('hiện đủ 5 trạng thái, đánh dấu trạng thái hiện tại; chưa ai cập nhật thì nói rõ', () => {
+    mockFetch(() => json({}));
+    show(withStatus({ customerStatus: 'quoted' }));
+    const names = within(group()).getAllByRole('button').map((b) => b.textContent);
+    expect(names).toEqual(['Chưa tư vấn', 'Đang tư vấn', 'Đã báo giá', 'Đã chốt', 'Không mua']);
+    expect(within(group()).getByRole('button', { name: 'Đã báo giá' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(group()).getByRole('button', { name: 'Đã chốt' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByText('Chưa ai cập nhật trạng thái.')).toBeTruthy();
+  });
+
+  it('hiện người đổi gần nhất', () => {
+    mockFetch(() => json({}));
+    show(withStatus({ customerStatus: 'won', customerStatusBy: 'Lan', customerStatusAt: '2026-11-13T03:00:00.000Z' }));
+    expect(screen.getByText(/Cập nhật bởi Lan,/)).toBeTruthy();
+  });
+
+  it('bấm trạng thái khác gửi đúng một yêu cầu; bấm lại trạng thái hiện tại thì không gửi gì', async () => {
+    const f = mockFetch(() => json({ status: 'consulting', by: 'Lan', at: '2026-11-13T03:00:00.000Z', changed: true }));
+    const user = userEvent.setup();
+    show(withStatus({ customerStatus: 'new' }));
+    await user.click(within(group()).getByRole('button', { name: 'Chưa tư vấn' }));
+    expect(f.posts()).toHaveLength(0);
+    await user.click(within(group()).getByRole('button', { name: 'Đang tư vấn' }));
+    await waitFor(() => expect(f.posts()).toHaveLength(1));
+    expect(f.posts()[0]!.url).toBe('/api/conversations/c1/status');
+    expect(f.body(0)).toEqual({ status: 'consulting' });
+  });
+
+  it('máy chủ từ chối thì báo lỗi và trạng thái quay về giá trị thật', async () => {
+    mockFetch(() => json({ error: { code: 'not_found', message: 'Không có hội thoại này.' } }, 404));
+    const user = userEvent.setup();
+    show(withStatus({ customerStatus: 'new' }));
+    await user.click(within(group()).getByRole('button', { name: 'Đã chốt' }));
+    expect(await screen.findByText(/Không có hội thoại này/)).toBeTruthy();
+    expect(within(group()).getByRole('button', { name: 'Chưa tư vấn' }).getAttribute('aria-pressed')).toBe('true');
+  });
+});

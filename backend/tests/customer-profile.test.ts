@@ -69,6 +69,38 @@ describe('tên khách từ Graph', () => {
     expect(c!.displayName).toBeNull();
   });
 
+  it('Meta từ chối User Profile API (400, mã 100) thì lấy tên từ Conversations API theo user_id', async () => {
+    const { ids } = await seed(['psid-f']);
+    const { graph, fake } = graphWith((req) => {
+      if (req.path === 'psid-f') return metaError(100, 'Unsupported get request');
+      expect(req.path).toBe('pg1/conversations');
+      expect(req.params.get('user_id')).toBe('psid-f');
+      return { body: { data: [{ participants: { data: [{ id: 'pg1', name: 'Tên Page' }, { id: 'psid-f', name: '  Lê Thị Mai\u0000 ' }] } }] } };
+    });
+    const r = await fillCustomerNames(db, graph, crypto, ids, log);
+    expect(r).toEqual({ filled: 1, failed: 0 });
+    expect(fake.calls.length).toBe(2);
+    const [c] = await db.select().from(conversations).where(eq(conversations.id, ids[0]!));
+    expect(c!.displayName).toBe('Lê Thị Mai'); // đúng người (PSID), không lấy tên Page, đã làm sạch
+  });
+
+  it('không dùng đường dự phòng cho lỗi khác (token hỏng, Meta 5xx): vẫn là lỗi, không gọi thêm', async () => {
+    const { ids } = await seed(['psid-g']);
+    const { graph, fake } = graphWith(() => metaError(190, 'token hết hạn', 401));
+    expect(await fillCustomerNames(db, graph, crypto, ids, log)).toEqual({ filled: 0, failed: 1 });
+    expect(fake.calls.length).toBe(1);
+  });
+
+  it('đường dự phòng không có ai mang PSID đó thì không đoán tên', async () => {
+    const { ids } = await seed(['psid-h']);
+    const { graph } = graphWith((req) =>
+      req.path === 'psid-h' ? metaError(100, 'Unsupported get request') : { body: { data: [{ participants: { data: [{ id: 'pg1', name: 'Tên Page' }] } }] } },
+    );
+    expect(await fillCustomerNames(db, graph, crypto, ids, log)).toEqual({ filled: 0, failed: 0 });
+    const [c] = await db.select().from(conversations).where(eq(conversations.id, ids[0]!));
+    expect(c!.displayName).toBeNull();
+  });
+
   it('Page đã ngắt kết nối thì bỏ qua', async () => {
     const { ids, pageId } = await seed(['psid-d']);
     await db.update(pages).set({ status: 'disconnected', tokenEnc: '' }).where(eq(pages.id, pageId));

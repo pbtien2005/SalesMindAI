@@ -1,8 +1,8 @@
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { TokenCrypto } from '../crypto/token-crypto.js';
 import type { Db } from '../db/client.js';
-import { messages, pages } from '../db/schema.js';
-import { GraphApiError, type GraphClient, type GraphMessage } from '../meta/graph-client.js';
+import { conversations, messages, pages } from '../db/schema.js';
+import { GraphApiError, type GraphClient, type GraphMessage, type Participant } from '../meta/graph-client.js';
 import type { ParsedMessage } from '../meta/parse-webhook.js';
 import { stripNul } from '../meta/sanitize.js';
 import { storeInbound, type StoreItem } from '../workers/store-messages.js';
@@ -35,7 +35,7 @@ export interface BackfillLogger {
 
 export interface BackfillDeps {
   db: Db;
-  graph: Pick<GraphClient, 'listConversations' | 'listConversationMessages' | 'getMessage'>;
+  graph: Pick<GraphClient, 'listConversations' | 'listConversationMessages' | 'getMessage' | 'getConversationParticipants'>;
   crypto: TokenCrypto;
   queue: BackfillQueue;
   log: BackfillLogger;
@@ -157,6 +157,8 @@ export interface ConversationStats {
   stored: number;
   duplicates: number;
   heuristicSkipped: number;
+  /** Số hội thoại vừa được điền tên khách (chỉ hội thoại chưa có tên; không ghi đè). */
+  named: number;
   /** Meta báo danh sách tin còn trang sau mà ta không đọc: có thể thiếu tin gần đây. */
   truncated: boolean;
 }
@@ -185,7 +187,7 @@ export async function handleBackfillConversation(
   const pacing = deps.pacingMs ?? 100;
   const stats: ConversationStats = {
     listed: 0, alreadyStored: 0, outbound: 0, noRecipient: 0, noText: 0, unavailable: 0,
-    stored: 0, duplicates: 0, heuristicSkipped: 0, truncated: false,
+    stored: 0, duplicates: 0, heuristicSkipped: 0, named: 0, truncated: false,
   };
 
   const page = await loadPage(db, job.pageId);
@@ -283,6 +285,21 @@ export async function handleBackfillConversation(
     throw err; // pg-boss retry có backoff
   }
 
+  // Tên khách: lấy từ `participants` của chính hội thoại này (không qua User Profile API, vốn từ chối khách thật khi app
+  // chưa được duyệt quyền). Làm cố gắng hết sức: lỗi chỉ ghi mã lỗi, không làm hỏng job và không ghi tên.
+  // Chạy cả khi mọi tin đã có sẵn trong DB, nên chạy lại backfill sẽ điền được tên cho hội thoại cũ.
+  if (stats.listed > 0) {
+    try {
+      const people = await graph.getConversationParticipants(token, job.conversationId);
+      stats.named = await applyParticipantNames(db, page, people);
+    } catch (err) {
+      log.warn(
+        { pageId: page.id, ...(err instanceof GraphApiError ? { httpStatus: err.httpStatus, code: err.code } : {}) },
+        'backfill: không lấy được tên khách của hội thoại',
+      );
+    }
+  }
+
   log.info({ pageId: page.id, ...stats }, 'backfill: đã xử lý một hội thoại');
   if (stats.truncated) {
     log.warn(
@@ -297,6 +314,32 @@ export async function handleBackfillConversation(
     );
   }
   return stats;
+}
+
+/** Điền `display_name` cho khách (không phải Page) của hội thoại này; chỉ khi chưa có tên. Trả số hội thoại được điền. */
+async function applyParticipantNames(
+  db: Db,
+  page: { id: string; tenantId: string; fbPageId: string },
+  people: Participant[],
+): Promise<number> {
+  let named = 0;
+  for (const p of people) {
+    if (p.id === page.fbPageId || p.name === null) continue;
+    const upd = await db
+      .update(conversations)
+      .set({ displayName: p.name })
+      .where(
+        and(
+          eq(conversations.tenantId, page.tenantId),
+          eq(conversations.pageId, page.id),
+          eq(conversations.psid, p.id),
+          isNull(conversations.displayName),
+        ),
+      )
+      .returning({ id: conversations.id });
+    named += upd.length;
+  }
+  return named;
 }
 
 /** Chuyển một tin Graph thành dạng chung với webhook để dùng chung phần lưu. */

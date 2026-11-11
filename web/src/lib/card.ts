@@ -36,7 +36,12 @@ export function buildCardRows(detail: ConversationDetail): CardRow[] {
   const approved = new Map<string, ApprovedView>(detail.approved.map((a) => [a.field, a]));
   const ai = new Map<string, ProposalView>(detail.autoFill.map((p) => [p.field, p]));
   const inBox = new Map<string, ProposalView>();
-  for (const b of detail.box) if (b.kind === 'proposal') inBox.set(b.field, b);
+  for (const b of detail.box) {
+    if (b.kind !== 'proposal') continue;
+    // Mốc hẹn giữ ở Hộp đề xuất (bắt buộc chọn ngày); SĐT, địa chỉ... hiện như dòng AI điền, duyệt chung ở Thẻ khách.
+    if (b.field === 'timeline') inBox.set(b.field, b);
+    else if (!ai.has(b.field)) ai.set(b.field, b);
+  }
 
   return CARD_FIELDS.map((field): CardRow => {
     const label = fieldLabel(field);
@@ -45,7 +50,7 @@ export function buildCardRows(detail: ConversationDetail): CardRow[] {
       return { field, label, state: 'approved', text: approvedText(a), decidedBy: a.decidedBy, decidedAt: a.updatedAt, edited: a.status === 'edited', evidence: [] };
     }
     const p = ai.get(field);
-    if (p) return { field, label, state: 'ai', text: p.value.text, evidence: p.evidence, proposalId: p.id };
+    if (p) return { field, label, state: 'ai', text: field === 'phone' ? formatPhoneDisplay(p.value.text) : p.value.text, evidence: p.evidence, proposalId: p.id };
 
     const pending = inBox.get(field);
     if (pending) {

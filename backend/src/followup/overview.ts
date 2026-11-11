@@ -9,8 +9,9 @@ import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { conversations, followupState, orders, pages, payments, profileFields, proposals, replyDrafts, tasks } from '../db/schema.js';
 import { startOfVnDay } from '../util/vn-time.js';
-import { LIGHT_FIELDS, NEEDS_CLARIFICATION, P1_PURPOSES, REVIEW_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
+import { LIGHT_FIELDS, NEEDS_CLARIFICATION, REVIEW_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
 import { followupStatus, type FollowupStatus } from './followup.js';
+import type { CustomerStatus } from '../customers/status.js';
 
 /** Khách chưa được trả lời quá ngần này phút (kèm tín hiệu mua hoặc thanh toán) thì là P1. */
 export const P1_WAIT_MINUTES = 15;
@@ -34,6 +35,10 @@ export interface ConversationSummary {
   nextContact: { at: Date; reason: string } | null;
   /** Câu gốc báo khách chốt mua (đề xuất `message_purpose = buy_intent` có căn cứ ở tin khách mới nhất). */
   closeSignal: { text: string; messageId: string } | null;
+  /** Trạng thái khách do Sale đặt tay (khác `stage`, vốn tự tính từ lịch bám). */
+  customerStatus: CustomerStatus;
+  customerStatusBy: string | null;
+  customerStatusAt: Date | null;
 }
 
 const minutesBetween = (from: Date, to: Date) => Math.max(0, Math.floor((to.getTime() - from.getTime()) / 60_000));
@@ -98,7 +103,6 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
         inArray(proposals.status, ['pending', 'accepted', 'edited']),
       ),
     );
-  const hasBuySignal = new Set<string>();
   const closeSignals = new Map<string, { text: string; messageId: string }>();
   for (const s of signalRows) {
     const evidenceMsg = (s.evidence as Evidence[] | null)?.[0]?.messageId;
@@ -106,7 +110,6 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
     const v = (s.value as ProposalValue).text;
     const ev = (s.evidence as Evidence[])[0]!;
     if (s.field === 'message_purpose' && v === 'buy_intent') closeSignals.set(s.conversationId, { text: ev.text, messageId: ev.messageId });
-    if ((s.field === 'message_purpose' && P1_PURPOSES.includes(v)) || (s.field === 'intent' && v === 'ready_to_buy')) hasBuySignal.add(s.conversationId);
   }
 
   // Giai đoạn khách: dựa trên dữ liệu ĐÃ DUYỆT (mốc hẹn và SĐT).
@@ -143,10 +146,13 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
         waitingOn,
         waitingMinutes,
         followup,
-        isP1: waitingOn === 'page' && (waitingMinutes ?? 0) > P1_WAIT_MINUTES && hasBuySignal.has(c.id),
+        isP1: waitingOn === 'page' && (waitingMinutes ?? 0) > P1_WAIT_MINUTES,
         isNew: customerWaiting && c.lastPageMessageAt === null,
         stage: apptAt.has(c.id) ? 'tracking' : !hasPhone.has(c.id) && followup.count === 0 && !followup.due ? 'new' : 'chasing',
         closeSignal: closeSignals.get(c.id) ?? null,
+        customerStatus: c.customerStatus,
+        customerStatusBy: c.customerStatusBy,
+        customerStatusAt: c.customerStatusAt,
         nextContact: apptAt.has(c.id) ? { at: apptAt.get(c.id)!, reason: 'Ngày hẹn đã xác nhận (ưu tiên 1)' } : null,
       };
     })

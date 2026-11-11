@@ -152,7 +152,7 @@ export function SignupView({ goto }: { goto: (s: AuthScreen) => void }) {
     <AuthFrame title="Tạo tài khoản">
       {state === 'sent' ? (
         <p role="status" className="mt-0 text-sm">
-          Đã tạo tài khoản. Chúng tôi gửi một thư xác minh tới {form.email.trim()}; bạn có thể đăng nhập ngay, nhưng cần xác minh email trước khi kết nối Page Facebook.
+          Đã tạo tài khoản. Chúng tôi gửi một thư xác minh tới {form.email.trim()}; bạn có thể đăng nhập và kết nối Page Facebook ngay.
         </p>
       ) : (
         <form onSubmit={submit}>
@@ -290,7 +290,7 @@ export function VerifyView({ token, done }: { token: string; done: () => void })
       ) : null}
       {state === 'ok' ? (
         <p role="status" className="mt-0 text-sm">
-          Đã xác minh email. Bạn có thể kết nối Page Facebook.
+          Đã xác minh email.
         </p>
       ) : null}
       {state === 'error' ? <ErrorBanner error={error} /> : null}

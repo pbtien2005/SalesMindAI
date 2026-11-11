@@ -77,6 +77,7 @@ export function InboxList({
   onPageChange,
   hasMore = false,
   onLoadMore,
+  initialFilter = 'all',
 }: {
   conversations: ConversationSummary[];
   now: string;
@@ -88,8 +89,9 @@ export function InboxList({
   onPageChange?: (id: string) => void;
   hasMore?: boolean;
   onLoadMore?: () => void;
+  initialFilter?: Filter;
 }) {
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<Filter>(initialFilter);
   const [query, setQuery] = useState('');
 
   const counts = useMemo(

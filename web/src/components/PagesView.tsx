@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { formatDateTime } from '../api/format';
-import { useBackfillPage, useConnectUrl, useDisconnectPage, usePages } from '../api/hooks';
+import { useBackfillPage, useDisconnectPage, usePages } from '../api/hooks';
 import type { PageView } from '../api/types';
+import { ConnectPageDialog, useConnectBlock } from './ConnectPageDialog';
 import { ErrorBanner } from './ErrorBanner';
 import { Main } from './Main';
 import { StatusChip } from './StatusChip';
@@ -30,7 +31,7 @@ function readOutcome(): { kind: 'ok' | 'partial' | 'none' | 'error'; text: strin
     failed ? `${failed} Page đã lưu nhưng chưa đăng ký được webhook (chưa nhận được tin)` : '',
   ].filter(Boolean);
   if (n === 0 && notes.length === 0) return { kind: 'none', text: 'Chưa có Page nào được kết nối. Hãy chọn ít nhất một Page trong hộp thoại của Facebook.' };
-  return { kind: notes.length ? 'partial' : 'ok', text: `Đã kết nối ${n} Page.${notes.length ? ' ' + notes.join('; ') + '.' : ''}` };
+  return { kind: notes.length ? 'partial' : 'ok', text: `Đã kết nối ${n} Page.${notes.length ? ' ' + notes.join('; ') + '.' : ''}${n > 0 ? ' Bấm "Lấy lại tin cũ" ở từng Page để tải các hội thoại trước đây; tin mới sẽ tự hiện trong Hội thoại.' : ''}` };
 }
 
 const STATUS: Record<PageView['status'], { tone: 'green' | 'amber' | 'gray'; label: string }> = {
@@ -42,15 +43,11 @@ const STATUS: Record<PageView['status'], { tone: 'green' | 'amber' | 'gray'; lab
 function PageCard({ p }: { p: PageView }) {
   const disconnect = useDisconnectPage();
   const backfill = useBackfillPage();
-  const connect = useConnectUrl();
+  const block = useConnectBlock();
+  const [reconnecting, setReconnecting] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const st = STATUS[p.status];
-
-  const reconnect = () =>
-    connect.mutate(undefined, {
-      onSuccess: (r) => window.location.assign(r.url),
-    });
 
   return (
     <li className="rounded-xl border border-line bg-white p-5">
@@ -70,7 +67,7 @@ function PageCard({ p }: { p: PageView }) {
       </dl>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {p.status !== 'active' ? (
-          <button type="button" className={btn} disabled={connect.isPending} onClick={reconnect}>
+          <button type="button" className={btn} disabled={block !== null} onClick={() => setReconnecting(true)}>
             Kết nối lại
           </button>
         ) : (
@@ -106,17 +103,17 @@ function PageCard({ p }: { p: PageView }) {
           {note}
         </p>
       ) : null}
-      {disconnect.error ?? backfill.error ?? connect.error ? <div className="mt-3"><ErrorBanner error={disconnect.error ?? backfill.error ?? connect.error} /></div> : null}
+      {disconnect.error ?? backfill.error ? <div className="mt-3"><ErrorBanner error={disconnect.error ?? backfill.error} /></div> : null}
+      <ConnectPageDialog open={reconnecting} reconnect onClose={() => setReconnecting(false)} />
     </li>
   );
 }
 
 export function PagesView() {
   const pages = usePages();
-  const connect = useConnectUrl();
+  const block = useConnectBlock();
+  const [dialog, setDialog] = useState(false);
   const [outcome] = useState(readOutcome);
-
-  const start = () => connect.mutate(undefined, { onSuccess: (r) => window.location.assign(r.url) });
   const list = pages.data?.pages ?? [];
 
   return (
@@ -124,10 +121,12 @@ export function PagesView() {
       <div className="mx-auto flex max-w-[860px] flex-col gap-5 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="m-0 grow text-[22px] font-bold">Page Facebook</h2>
-          <button type="button" className={primary} disabled={connect.isPending || pages.data?.facebookConfigured === false} onClick={start}>
-            Kết nối Page Facebook
+          <button type="button" className={primary} disabled={block !== null} onClick={() => setDialog(true)}>
+            {list.some((p) => p.status !== 'disconnected') ? '+ Thêm Page' : 'Kết nối Page Facebook'}
           </button>
         </div>
+        {block ? <p role="status" className="m-0 -mt-3 text-sm text-ink-3">{block}</p> : null}
+        <ConnectPageDialog open={dialog} onClose={() => setDialog(false)} />
 
         {outcome ? (
           <div role="status" className={`rounded-xl border p-4 text-sm ${outcome.kind === 'ok' ? 'border-[#b7dfc4] bg-[#eefaf2]' : 'border-[#e0a33a] bg-[#fffaee]'}`}>
@@ -139,7 +138,6 @@ export function PagesView() {
             Máy chủ chưa được cấu hình ứng dụng Facebook (FB_APP_ID, APP_SECRET). Xem hướng dẫn trong doc/KET-NOI-PAGE.md.
           </div>
         ) : null}
-        {connect.error ? <ErrorBanner error={connect.error} /> : null}
         {pages.isError ? <ErrorBanner error={pages.error} /> : null}
 
         <p className="m-0 text-sm text-ink-3">

@@ -85,6 +85,13 @@
       "when": 1794358664108,
       "tag": "0011_bouncy_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794405418749,
+      "tag": "0012_easy_norman_osborn",
+      "breakpoints": true
     }
   ]
 }

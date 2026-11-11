@@ -54,17 +54,20 @@ describe('màn Page Facebook', () => {
     server({ ...PAGES, facebookConfigured: false });
     renderApp(<PagesView />, meHa);
     expect((await screen.findByRole('alert')).textContent).toContain('FB_APP_ID');
-    expect((screen.getByRole('button', { name: 'Kết nối Page Facebook' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '+ Thêm Page' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('kết nối: xin liên kết rồi chuyển sang Facebook', async () => {
+  it('kết nối: hộp thoại giải thích, bấm Tiếp tục mới xin liên kết rồi chuyển sang Facebook', async () => {
     const assign = vi.fn();
     vi.stubGlobal('location', { ...window.location, assign, search: '' });
     const user = userEvent.setup();
     const f = server();
     renderApp(<PagesView />, meHa);
     await screen.findByText('Nội thất Một');
-    await user.click(screen.getByRole('button', { name: 'Kết nối Page Facebook' }));
+    await user.click(screen.getByRole('button', { name: '+ Thêm Page' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(f.posts()).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Tiếp tục với Facebook' }));
     await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('https://facebook.example/dialog?state=x'));
     expect(f.posts().map((p) => p.url)).toEqual(['/api/pages/connect-url']);
   });

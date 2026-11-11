@@ -132,7 +132,8 @@ describe('dữ liệu nền demo', () => {
     expect(ctx.clockNow.toISOString()).toBe(DEMO_START.toISOString());
     const home = await loadHome(db, ctx.tenantId, DEMO_START);
 
-    expect(home.p1.map((c) => c.displayName)).toEqual(['Chị Thu']);
+    // P1 = khách chờ Page trả lời quá 15 phút (không cần tín hiệu mua).
+    expect(home.p1.map((c) => c.displayName).sort()).toEqual(['Anh Đức', 'Chị Ngọc', 'Chị Thu']);
     expect(home.overdue.map((t) => t.displayName).sort()).toEqual(['Anh Đức', 'Chị Ngọc']);
     expect(home.overdue.map((t) => t.title).sort()).toEqual(['Gọi lại báo giá', 'Nhắc thanh toán']);
     expect(home.suggestStop).toEqual([]);
@@ -146,24 +147,25 @@ describe('dữ liệu nền demo', () => {
   it('chị Thu chờ 20 phút: P1 chỉ khi quá 15 phút', async () => {
     const ctx = await reset();
     const at = (min: number) => new Date(vn(2026, 11, 12, 8, 40).getTime() + min * 60_000);
-    expect((await loadHome(db, ctx.tenantId, at(10))).p1).toEqual([]);
-    expect((await loadHome(db, ctx.tenantId, at(15))).p1).toEqual([]); // đúng 15 phút chưa phải "quá"
-    expect((await loadHome(db, ctx.tenantId, at(16))).p1).toHaveLength(1);
+    const names = async (min: number) => (await loadHome(db, ctx.tenantId, at(min))).p1.map((c) => c.displayName);
+    expect(await names(10)).not.toContain('Chị Thu');
+    expect(await names(15)).not.toContain('Chị Thu'); // đúng 15 phút chưa phải "quá"
+    expect(await names(16)).toContain('Chị Thu');
   });
 
-  it('P1 hết khi Page trả lời, hoặc khi khách nhắn tin mới không còn tín hiệu mua', async () => {
+  it('P1 là khách chờ quá lâu, không cần tín hiệu mua; hết khi Page trả lời', async () => {
     const ctx = await reset();
     const [thu] = await db.select().from(conversations).where(eq(conversations.displayName, 'Chị Thu'));
     const base = { tenantId: ctx.tenantId, pageId: ctx.pageId, conversationId: thu!.id };
 
-    // Khách nhắn thêm một câu không có tín hiệu mua: tín hiệu cũ không được ở lại mãi.
+    // Khách nhắn thêm một câu không có tín hiệu mua: vẫn là P1 vì chỉ cần chờ quá lâu.
     await addMessage(db, base, { text: 'ok em cảm ơn', sentAt: vn(2026, 11, 12, 8, 50) });
     await db.update(conversations).set({ lastUserInteractionAt: vn(2026, 11, 12, 8, 50) }).where(eq(conversations.id, thu!.id));
-    // Mốc 09:30: khách đã chờ 40 phút (quá ngưỡng 15 phút), nên P1 tắt chỉ vì tín hiệu mua đã cũ.
+    // Mốc 09:30: khách đã chờ 40 phút (quá ngưỡng 15 phút).
     const later = vn(2026, 11, 12, 9, 30);
     const [waiting] = (await loadConversationSummaries(db, ctx.tenantId, later)).filter((x) => x.id === thu!.id);
-    expect(waiting).toMatchObject({ waitingOn: 'page', waitingMinutes: 40, isP1: false });
-    expect((await loadHome(db, ctx.tenantId, later)).p1).toEqual([]);
+    expect(waiting).toMatchObject({ waitingOn: 'page', waitingMinutes: 40, isP1: true });
+    expect((await loadHome(db, ctx.tenantId, later)).p1.map((x) => x.id)).toContain(thu!.id);
 
     // Page trả lời: hết chờ.
     await db.update(conversations).set({ lastPageMessageAt: vn(2026, 11, 12, 8, 55) }).where(eq(conversations.id, thu!.id));
@@ -176,7 +178,7 @@ describe('dữ liệu nền demo', () => {
     const fri = vn(2026, 11, 13, 9, 30);
     const home = await loadHome(db, ctx.tenantId, fri);
     expect(home.suggestStop.map((c) => c.displayName)).toEqual(['Cô Mai']);
-    expect(home.p1.map((c) => c.displayName)).toEqual(['Chị Thu']);
+    expect(home.p1.map((c) => c.displayName).sort()).toEqual(['Anh Đức', 'Chị Ngọc', 'Chị Thu']);
     expect(home.overdue).toHaveLength(2);
   });
 

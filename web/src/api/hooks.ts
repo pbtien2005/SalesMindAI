@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { api, ApiError } from './client';
-import type { ConversationSummary, DecideBody } from './types';
+import type { ConversationSummary, CustomerStatus, DecideBody } from './types';
 
 /** Giao diện đọc lại dữ liệu mỗi 2 giây (không dùng SSE/WebSocket, xem doc/PLAN-demo-mvp.md). */
 export const POLL_MS = 2000;
@@ -121,6 +121,12 @@ export function useDecide() {
   });
 }
 
+/** Sale đặt trạng thái khách ở thẻ khách; xong thì đọc lại để thẻ, hộp thư và lịch sử cùng cập nhật. */
+export function useSetCustomerStatus() {
+  const refresh = useRefreshAll();
+  return useMutation({ mutationFn: (v: { conversationId: string; status: CustomerStatus }) => api.setCustomerStatus(v.conversationId, v.status), onSuccess: refresh });
+}
+
 export function useStopFollowup() {
   const refresh = useRefreshAll();
   return useMutation({ mutationFn: (conversationId: string) => api.stopFollowup(conversationId), onSuccess: refresh });
@@ -173,7 +179,8 @@ export const useRevokeInvite = () => useTeamMutation((id: string) => api.revokeI
 export const useSetRole = () => useTeamMutation((v: { userId: string; role: string }) => api.setRole(v.userId, v.role));
 export const useRemoveMember = () => useTeamMutation((userId: string) => api.removeMember(userId));
 
-export const usePages = () => useQuery({ queryKey: ['pages'], queryFn: api.pages, retry: shouldRetry, refetchInterval: POLL_MS });
+/** `enabled=false` cho vai trò sale: API Page chỉ dành cho owner và manager (sale sẽ nhận 403). */
+export const usePages = (enabled = true) => useQuery({ queryKey: ['pages'], queryFn: api.pages, retry: shouldRetry, refetchInterval: POLL_MS, enabled });
 export const useConnectUrl = () => useMutation({ mutationFn: () => api.connectUrl() });
 function usePagesMutation<V, R>(fn: (v: V) => Promise<R>) {
   const qc = useQueryClient();

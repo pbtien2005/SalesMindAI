@@ -75,7 +75,6 @@ export const pageRoutes: FastifyPluginAsync<PageRouteOptions> = async (app, opts
   app.post('/api/pages/connect-url', guard, async (req, reply) => {
     const a = req.auth!;
     if (!opts.facebookConfigured) return apiError(reply, 503, 'facebook_not_configured', 'Chưa cấu hình ứng dụng Facebook (FB_APP_ID, APP_SECRET) trên máy chủ.');
-    if (!a.emailVerified) return apiError(reply, 403, 'email_not_verified', 'Cần xác minh email trước khi kết nối Page.');
     const state = await createOAuthState(db, a.tenantId, undefined, a.userId);
     await db.insert(auditLog).values({ tenantId: a.tenantId, userId: a.userId, action: 'page.connect_started' });
     return { url: connectUrl(opts.publicBaseUrl, state), expiresInSeconds: 600 };

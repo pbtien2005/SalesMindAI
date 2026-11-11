@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { INBOX_STEP, useConversation, useInbox } from '../api/hooks';
 import { useSession } from '../state/session';
 import { ChatPane } from './ChatPane';
+import { ConnectPageCard } from './ConnectPageCard';
 import { CustomerCard } from './CustomerCard';
 import { ErrorBanner } from './ErrorBanner';
 import { InboxList } from './InboxList';
@@ -12,7 +13,7 @@ import { ProposalBox } from './ProposalBox';
 
 /** Màn Hội thoại: danh sách | khung chat | Hộp đề xuất và thẻ khách. */
 export function ChatView() {
-  const { conversationId, selectConversation } = useSession();
+  const { conversationId, selectConversation, inboxFilter } = useSession();
   const [pageId, setPageId] = useState('');
   const [target, setTarget] = useState(INBOX_STEP);
   const inbox = useInbox(pageId || undefined, target);
@@ -73,6 +74,7 @@ export function ChatView() {
         }}
         hasMore={inbox.data.hasMore}
         onLoadMore={() => setTarget((t) => t + INBOX_STEP)}
+        initialFilter={inboxFilter}
       />
       {detail.data ? (
         <>
@@ -80,13 +82,14 @@ export function ChatView() {
           <ChatPane key={detail.data.summary.id} detail={detail.data} flashId={flashId} />
           <aside aria-label="Thông tin khách" className="flex w-[360px] flex-none flex-col overflow-auto border-l border-line bg-white">
             <OrderSection detail={detail.data} onJump={jump} />
-            <ProposalBox conversationId={detail.data.summary.id} items={detail.data.box} messages={detail.data.messages} onJump={jump} />
+            <ProposalBox conversationId={detail.data.summary.id} items={detail.data.box.filter((b) => b.kind === 'stop_followup' || b.field === 'timeline')} messages={detail.data.messages} onJump={jump} />
             <CustomerCard detail={detail.data} onJump={jump} />
             <HistoryPanel conversationId={detail.data.summary.id} messages={detail.data.messages} onJump={jump} />
           </aside>
         </>
       ) : (
         <div className="min-w-0 grow p-6">
+          {!effectiveId ? <ConnectPageCard className="mb-4 max-w-[560px]" /> : null}
           {detail.error ? <ErrorBanner error={detail.error} /> : <p className="text-ink-3">{effectiveId ? 'Đang tải hội thoại…' : 'Khi có khách nhắn tới, cuộc trò chuyện sẽ hiện ở đây.'}</p>}
         </div>
       )}

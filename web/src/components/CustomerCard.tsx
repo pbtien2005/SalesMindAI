@@ -1,13 +1,51 @@
 import { useState } from 'react';
 import { formatTime } from '../api/format';
-import { useDecide } from '../api/hooks';
-import type { ConversationDetail } from '../api/types';
+import { useDecide, useSetCustomerStatus } from '../api/hooks';
+import type { ConversationDetail, ConversationSummary } from '../api/types';
 import { buildCardRows, type CardRow } from '../lib/card';
+import { CUSTOMER_STATUS_LABEL, CUSTOMER_STATUS_ORDER } from '../lib/customerStatus';
 import { EvidenceToggle } from './EvidenceToggle';
 import { ErrorBanner } from './ErrorBanner';
 import { StatusChip } from './StatusChip';
 
-const EDITABLE = new Set(['customer_name', 'product_interest', 'budget', 'quantity']);
+/**
+ * Trạng thái khách: Sale bấm chọn, không có gì tự đổi (AI không đề xuất hay đổi trạng thái).
+ * Hiện người đổi và lúc đổi gần nhất để cả đội biết ai đã cập nhật.
+ */
+function CustomerStatusPicker({ summary }: { summary: ConversationSummary }) {
+  const set = useSetCustomerStatus();
+  // Hiện ngay lựa chọn vừa bấm trong lúc chờ máy chủ; lỗi thì quay về giá trị thật.
+  const current = set.isPending && set.variables ? set.variables.status : summary.customerStatus;
+  return (
+    <div>
+      <div id={`status-label-${summary.id}`} className="text-xs text-ink-3">Trạng thái khách</div>
+      <div role="group" aria-labelledby={`status-label-${summary.id}`} className="mt-1 flex flex-wrap gap-1.5">
+        {CUSTOMER_STATUS_ORDER.map((s) => (
+          <button
+            key={s}
+            type="button"
+            aria-pressed={current === s}
+            disabled={set.isPending}
+            onClick={() => current !== s && set.mutate({ conversationId: summary.id, status: s })}
+            className={`h-8 rounded-full border px-3 text-xs font-semibold disabled:opacity-60 ${current === s ? 'border-brand bg-brand text-white' : 'border-line-strong bg-white text-ink-2'}`}
+          >
+            {CUSTOMER_STATUS_LABEL[s]}
+          </button>
+        ))}
+      </div>
+      {summary.customerStatusBy && summary.customerStatusAt ? (
+        <div className="mt-1 text-xs text-ink-3">
+          Cập nhật bởi {summary.customerStatusBy}, {formatTime(summary.customerStatusAt)}
+        </div>
+      ) : (
+        <div className="mt-1 text-xs text-ink-3">Chưa ai cập nhật trạng thái.</div>
+      )}
+      {set.error ? <div className="mt-2"><ErrorBanner error={set.error} /></div> : null}
+    </div>
+  );
+}
+
+const EDITABLE = new Set(['customer_name', 'product_interest', 'budget', 'quantity', 'phone', 'address']);
 
 /** Sale sửa giá trị AI điền sai: lưu là "Đã sửa và duyệt" (gọi decide với action edit). */
 function EditAiValue({ row }: { row: CardRow }) {
@@ -100,6 +138,7 @@ export function CustomerCard({ detail, onJump }: { detail: ConversationDetail; o
   return (
     <div className="flex flex-col gap-3 px-[18px] py-4">
       <h2 className="m-0 text-[15px] font-bold">Thẻ khách</h2>
+      <CustomerStatusPicker summary={detail.summary} />
       <ApproveAllAi rows={rows} />
       {rows.map((r) => (
         <div key={r.field}>
