@@ -19,3 +19,22 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # API + giao diện trong một container. Chỉ chạy khi bật profile "app":
+  #   docker compose --profile app up -d --build
+  # Cấu hình ở backend/.env.docker (sao chép từ backend/.env.docker.example; file này không được commit).
+  app:
+    profiles: ["app"]
+    build: .
+    image: salesmind
+    container_name: salesmind-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: backend/.env.docker
+    environment:
+      # Trong mạng compose, Postgres ở cổng 5432 với tên máy "postgres".
+      DATABASE_URL: postgres://salesmind:salesmind@postgres:5432/salesmind
+    ports:
+      - "127.0.0.1:3000:3000"

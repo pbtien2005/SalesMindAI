@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/coverage
+.git
+.docker-data
+.claude
+.vscode
+doc
+reports
+research_notes
+# Bí mật và cấu hình cục bộ không được vào image
+**/.env
+**/.env.*
+!**/.env.example
+# Test và kịch bản trình duyệt không cần để chạy
+backend/tests
+web/e2e
