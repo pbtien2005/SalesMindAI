@@ -13,13 +13,24 @@ const ACCENT: Record<Accent, { border: string; value: string }> = {
   blue: { border: 'border-line border-t-brand', value: 'text-brand' },
 };
 
-function StatCard({ accent, label, value, detail, action }: { accent: Accent; label: string; value: number; detail: string; action?: ReactNode }) {
+function StatCard({ accent, label, value, detail, action, onOpen }: { accent: Accent; label: string; value: number; detail: string; action?: ReactNode; onOpen?: () => void }) {
   const a = ACCENT[accent];
-  return (
-    <div className={`rounded-xl border border-t-4 bg-white p-4 ${a.border}`}>
+  const body = (
+    <>
       <div className="text-[13px] text-ink-3">{label}</div>
       <div className={`text-[34px] font-bold leading-[1.2] tabular-nums ${a.value}`}>{value}</div>
       <div className="text-[13px] text-ink-2">{detail}</div>
+    </>
+  );
+  return (
+    <div className={`rounded-xl border border-t-4 bg-white p-4 ${a.border}`}>
+      {onOpen ? (
+        <button type="button" onClick={onOpen} aria-label={`${label}: ${value}, bấm để xem danh sách`} className="block w-full border-0 bg-transparent p-0 text-left">
+          {body}
+        </button>
+      ) : (
+        body
+      )}
       {action}
     </div>
   );
@@ -98,7 +109,7 @@ function AiStatsBlock({ ai }: { ai: HomeData['ai'] }) {
 /** Trang chủ quản lý (cảnh 0 và 6). */
 export function HomeView() {
   const home = useHome();
-  const { me, role, openConversation } = useSession();
+  const { me, role, openConversation, setView } = useSession();
 
   if (home.error) {
     return (
@@ -137,7 +148,7 @@ export function HomeView() {
             ) : null
           }
         />
-        <StatCard accent="amber" label="Việc quá hạn" value={h.overdue.length} detail={h.overdue.length === 0 ? 'Không có việc quá hạn' : overdueNames.join(', ')} />
+        <StatCard accent="amber" label="Việc quá hạn" value={h.overdue.length} detail={h.overdue.length === 0 ? 'Không có việc quá hạn' : overdueNames.join(', ')} onOpen={() => setView('overdue')} />
         <StatCard
           accent="blue"
           label="Lịch nhắc sắp tới"

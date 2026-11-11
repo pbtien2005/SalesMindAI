@@ -76,6 +76,7 @@ export const useInbox = (pageId?: string, target: number = INBOX_STEP) =>
     placeholderData: (prev) => prev,
   });
 export const useHome = () => useQuery({ queryKey: key('home'), queryFn: api.home, refetchInterval: POLL_MS, retry: shouldRetry });
+export const useOverdue = () => useQuery({ queryKey: key('overdue'), queryFn: api.overdue, refetchInterval: POLL_MS, retry: shouldRetry });
 export const useConversation = (id: string | null) =>
   useQuery({
     queryKey: key('conversation', id),

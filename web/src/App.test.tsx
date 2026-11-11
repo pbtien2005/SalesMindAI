@@ -232,3 +232,40 @@ describe('Bảng Giả lập', () => {
     expect((await within(panel).findByRole('alert')).textContent).toContain('không tua lùi được');
   });
 });
+
+describe('Việc quá hạn và lịch sử duyệt (cảnh 6)', () => {
+  const overdueServer = () =>
+    server({}, (url) => {
+      if (url === '/api/overdue') return json({ now: NOW, overdue: HOME.overdue });
+      if (url.endsWith('/history'))
+        return json({
+          history: [
+            { kind: 'proposal', field: 'budget', proposedValue: { text: '≈ 15.000.000 ₫' }, decidedValue: { text: '15.000.000 ₫' }, status: 'accepted', decidedBy: 'Lan', at: '2026-11-11T03:00:00.000Z', evidence: [] },
+          ],
+        });
+      return undefined;
+    });
+
+  it('bấm thẻ "Việc quá hạn" hiện đúng 2 việc kèm số ngày quá hạn', async () => {
+    overdueServer();
+    const user = userEvent.setup();
+    renderApp(<App />);
+    await user.click(await screen.findByRole('button', { name: /Việc quá hạn: 2/ }));
+    const main = screen.getByRole('main');
+    expect(await within(main).findByText('Anh Đức')).toBeTruthy();
+    expect(within(main).getByText('Chị Ngọc')).toBeTruthy();
+    expect(within(main).getByText('Quá hạn 3 ngày')).toBeTruthy();
+    expect(within(main).getByText('Quá hạn 1 ngày')).toBeTruthy();
+  });
+
+  it('bấm một việc mở hội thoại và hiện lịch sử duyệt với người duyệt', async () => {
+    overdueServer();
+    const user = userEvent.setup();
+    renderApp(<App />);
+    await user.click(await screen.findByRole('button', { name: /Việc quá hạn: 2/ }));
+    await user.click(await screen.findByRole('button', { name: /Anh Đức/ }));
+    const history = await screen.findByRole('region', { name: 'Lịch sử duyệt' });
+    expect(await within(history).findByText(/AI đề xuất Ngân sách: ≈ 15.000.000 ₫ · đã duyệt/)).toBeTruthy();
+    expect(within(history).getByText(/bởi Lan/)).toBeTruthy();
+  });
+});

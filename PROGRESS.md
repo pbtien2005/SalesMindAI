@@ -216,3 +216,4 @@ Thiết kế gốc: artifact "SalesMind AI - Phác thảo giao diện" (2 màn: 
 
 | K3 | Tên khách thật và ảnh đính kèm | xong (test với Graph giả) 2026-11-11 | `GraphClient.getUserName` + `src/meta/profiles.ts` (điền tên sau khi lưu tin, lỗi chỉ đếm); `src/meta/attachments.ts` lọc URL https của fbcdn.net/facebook.com/fbsbx.com; ChatPane hiện ảnh. Test: backend 678/678, web 145/145. **Chưa xác minh với Meta thật:** field `name` của user profile, quyền cần có, URL attachment hết hạn. |
 | G1 | Sửa trường AI điền, chặn ngày quá khứ, duyệt nhiều mục, giai đoạn khách | xong 2026-11-11 | `past_date` (422) ở `decideProposal`; `stage`/`nextContact` tính khi đọc; nút Sửa trên thẻ khách; "Duyệt N mục" (mốc hẹn trước). Test: backend 682/682, web 148/148. |
+| G2 | Danh sách việc quá hạn và lịch sử duyệt | xong 2026-11-11 | Thẻ "Việc quá hạn" bấm được → màn `OverdueView`; `HistoryPanel` trong màn Hội thoại; `/api/overdue` trả thêm `now`. Test web 150/150. |

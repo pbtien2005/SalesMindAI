@@ -6,6 +6,7 @@ import { CustomerCard } from './CustomerCard';
 import { ErrorBanner } from './ErrorBanner';
 import { InboxList } from './InboxList';
 import { Main } from './Main';
+import { HistoryPanel } from './HistoryPanel';
 import { ProposalBox } from './ProposalBox';
 
 /** Màn Hội thoại: danh sách | khung chat | Hộp đề xuất và thẻ khách. */
@@ -79,6 +80,7 @@ export function ChatView() {
           <aside aria-label="Thông tin khách" className="flex w-[360px] flex-none flex-col overflow-auto border-l border-line bg-white">
             <ProposalBox conversationId={detail.data.summary.id} items={detail.data.box} messages={detail.data.messages} onJump={jump} />
             <CustomerCard detail={detail.data} onJump={jump} />
+            <HistoryPanel conversationId={detail.data.summary.id} messages={detail.data.messages} onJump={jump} />
           </aside>
         </>
       ) : (

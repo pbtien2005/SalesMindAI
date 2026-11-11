@@ -3,6 +3,7 @@ import type {
   DecideBody,
   DecideResult,
   HistoryEntry,
+  OverdueTask,
   HomeData,
   ConversationSummary,
   Persona,
@@ -115,6 +116,7 @@ export const api = {
     return get<{ now: string; conversations: ConversationSummary[]; nextCursor: string | null }>(`/api/inbox?${p.toString()}`);
   },
   home: () => get<HomeData>('/api/home'),
+  overdue: () => get<{ now: string; overdue: OverdueTask[] }>('/api/overdue'),
   conversation: (id: string) => get<ConversationDetail>(`/api/conversations/${encodeURIComponent(id)}`),
   history: (id: string) => get<{ history: HistoryEntry[] }>(`/api/conversations/${encodeURIComponent(id)}/history`),
 

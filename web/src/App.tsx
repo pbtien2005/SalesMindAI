@@ -1,5 +1,6 @@
 import { ChatView } from './components/ChatView';
 import { HomeView } from './components/HomeView';
+import { OverdueView } from './components/OverdueView';
 import { AiView } from './components/AiView';
 import { PagesView } from './components/PagesView';
 import { TeamView } from './components/TeamView';
@@ -18,7 +19,7 @@ export function App() {
       <TopBar />
       <div className="relative flex min-h-0 grow">
         <SideNav />
-        {view === 'chat' ? <ChatView /> : view === 'team' ? <TeamView /> : view === 'pages' ? <PagesView /> : view === 'ai' ? <AiView /> : <HomeView />}
+        {view === 'chat' ? <ChatView /> : view === 'team' ? <TeamView /> : view === 'pages' ? <PagesView /> : view === 'ai' ? <AiView /> : view === 'overdue' ? <OverdueView /> : <HomeView />}
         <SimulatorPanel />
       </div>
     </div>

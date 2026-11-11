@@ -100,7 +100,8 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
 
   app.get('/api/overdue', async (req) => {
     const tenantId = req.auth!.tenantId;
-    return { overdue: (await loadHome(db, tenantId, await nowOf(tenantId))).overdue };
+    const now = await nowOf(tenantId);
+    return { now, overdue: (await loadHome(db, tenantId, now)).overdue };
   });
 
   app.get<{ Params: { id: string } }>('/api/conversations/:id', async (req, reply) => {
