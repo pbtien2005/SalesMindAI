@@ -16,7 +16,7 @@ const NOW = '2026-11-12T02:00:00.000Z';
 
 const thu = summary({ id: 'thu', displayName: 'Chị Thu', isP1: true, isNew: false, waitingMinutes: 22, lastMessageText: 'Mình chuyển khoản luôn được không bạn?' });
 const duc = summary({ id: 'duc', displayName: 'Anh Đức', isNew: false, waitingOn: 'customer' });
-const mai = summary({ id: 'mai', displayName: 'Cô Mai', isNew: false, waitingOn: 'customer', followup: { count: 4, max: 5, stopped: false, suggestStop: false } });
+const mai = summary({ id: 'mai', displayName: 'Cô Mai', isNew: false, waitingOn: 'customer', followup: { count: 4, max: 5, stopped: false, suggestStop: false, due: false, dueAt: null } });
 
 const HOME: HomeData = {
   now: NOW,
@@ -66,7 +66,7 @@ describe('Trang chủ (cảnh 0)', () => {
     expect(within(main).getByText('Việc quá hạn', { selector: 'div' }).nextElementSibling?.textContent).toBe('2');
     expect(within(main).getByText('Anh Đức, Chị Ngọc')).toBeTruthy();
     expect(within(main).getByText('Lịch nhắc sắp tới').nextElementSibling?.textContent).toBe('2');
-    expect(within(main).getByText('1 việc sắp đến hạn, 1 khách đang được bám')).toBeTruthy();
+    expect(within(main).getByText('1 việc sắp đến hạn, 0 khách đến hạn bám, 1 khách đang được bám')).toBeTruthy();
     expect(within(main).getByText('Tiền cọc hôm nay').nextElementSibling?.textContent).toBe('0 ₫');
   });
 
@@ -80,6 +80,24 @@ describe('Trang chủ (cảnh 0)', () => {
     expect(within(list).getByText('Bám 4/5')).toBeTruthy();
     expect(within(list).getByText('Sắp tới')).toBeTruthy();
     expect(within(list).getByText('Thứ Bảy 14/11 10:00')).toBeTruthy();
+  });
+
+  it('dòng nhắc bám: đến hạn thì nói rõ "đến hạn bám lại", chưa đến hạn thì nói lúc nào đến hạn', async () => {
+    server({
+      home: {
+        ...HOME,
+        reminders: [
+          { kind: 'followup', conversationId: 'lua', displayName: 'Chị Lụa', title: 'Đến hạn bám lần 1/5', dueAt: '2026-11-11T02:00:00.000Z' },
+          { kind: 'followup', conversationId: 'mai', displayName: 'Cô Mai', title: 'Bám 2/5', dueAt: '2026-11-12T10:00:00.000Z' },
+        ],
+      },
+    });
+    renderApp(<App />);
+    const list = await screen.findByRole('region', { name: 'Việc quá hạn và lịch nhắc' });
+    expect(within(list).getByText('Đến hạn bám lần 1/5')).toBeTruthy();
+    expect(within(list).getByText('Đã quá 24 giờ kể từ tin cuối, khách chưa phản hồi: đến hạn bám lại')).toBeTruthy();
+    expect(within(list).getByText('Bám 2/5')).toBeTruthy();
+    expect(within(list).getByText(/Đang được bám, đến hạn lần tiếp theo lúc/)).toBeTruthy();
   });
 
   it('bấm một dòng nhắc mở hội thoại tương ứng', async () => {

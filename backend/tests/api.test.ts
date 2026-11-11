@@ -110,11 +110,12 @@ describe('kịch bản demo cảnh 0–3 và 6, chỉ qua API', () => {
     // ----- Cảnh 2: một ngày sau (Thứ Sáu 09:30).
     expect((await advanceTo('2026-11-13T09:30:00+07:00')).status).toBe(200);
     let list = await inbox();
-    expect(byName(list, 'Facebook: anh Minh').followup).toMatchObject({ count: 1, max: 5, stopped: false, suggestStop: false });
+    // Lan mới TRẢ LỜI (chưa bám lần nào), nhưng đã quá 24 giờ kể từ tin đó: đến hạn bám lần 1.
+    expect(byName(list, 'Facebook: anh Minh').followup).toMatchObject({ count: 0, max: 5, stopped: false, suggestStop: false, due: true });
     const mai = byName(list, 'Cô Mai');
     expect(mai.followup).toMatchObject({ count: 5, suggestStop: true });
     const homeFri = (await call('GET', '/api/home')).json;
-    expect(homeFri.reminders.map((r: any) => `${r.kind}:${r.displayName}:${r.title}`)).toContain('followup:Facebook: anh Minh:Bám 1/5');
+    expect(homeFri.reminders.map((r: any) => `${r.kind}:${r.displayName}:${r.title}`)).toContain('followup:Facebook: anh Minh:Đến hạn bám lần 1/5');
     expect(homeFri.suggestStop.map((c: any) => c.displayName)).toEqual(['Cô Mai']);
 
     // Hộp đề xuất của cô Mai có mục "Ngừng bám"; Lan xác nhận.
@@ -125,9 +126,9 @@ describe('kịch bản demo cảnh 0–3 và 6, chỉ qua API', () => {
     list = await inbox();
     expect(byName(list, 'Cô Mai').followup).toMatchObject({ stopped: true, suggestStop: false });
 
-    // Lan nhắn lại anh Minh: bộ đếm bám về 0.
+    // Lan nhắn lại anh Minh (cách tin trước hơn 24 giờ): tính là 1 lần bám, hết đến hạn.
     await call('POST', '/api/demo/page-message', { conversationId: minhId, text: 'Anh Minh ơi, mẫu Sofa Milan xám em gửi hôm qua anh xem thế nào ạ?' });
-    expect(byName(await inbox(), 'Facebook: anh Minh').followup.count).toBe(0);
+    expect(byName(await inbox(), 'Facebook: anh Minh').followup).toMatchObject({ count: 1, due: false });
 
     // ----- Cảnh 3: khách quay lại, có SĐT, hẹn mơ hồ (09:40).
     await call('POST', '/api/clock/advance', { minutes: 10 });

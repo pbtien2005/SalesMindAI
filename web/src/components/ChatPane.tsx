@@ -125,12 +125,16 @@ export function ChatPane({ detail, flashId }: { detail: ConversationDetail; flas
         <div className="grow" />
         {f.stopped ? (
           <StatusChip tone="gray">Đã ngừng bám</StatusChip>
+        ) : f.due ? (
+          <span className="rounded-full bg-amber-soft px-2.5 py-1 text-xs font-semibold text-amber-ink">
+            Đến hạn bám lần {f.count + 1}/{f.max}
+          </span>
         ) : f.count > 0 ? (
           <span className="rounded-full bg-chip px-2.5 py-1 text-xs text-ink-2">
             Bám {f.count}/{f.max}
           </span>
         ) : null}
-        {f.count > 0 && !f.stopped ? (
+        {(f.count > 0 || f.due) && !f.stopped ? (
           confirmStop ? (
             <span className="flex items-center gap-1.5">
               <span className="text-xs text-ink-3">Ngừng bám khách này?</span>

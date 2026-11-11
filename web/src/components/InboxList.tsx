@@ -52,6 +52,10 @@ function Item({ c, now, selected, onSelect, showPage = false }: { c: Conversatio
             </StatusChip>
           ) : f.stopped ? (
             <StatusChip tone="gray">Đã ngừng bám</StatusChip>
+          ) : f.due ? (
+            <StatusChip tone="amber">
+              Đến hạn bám lần {f.count + 1}/{f.max}
+            </StatusChip>
           ) : f.count > 0 ? (
             <StatusChip tone="gray">
               Bám {f.count}/{f.max}

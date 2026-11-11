@@ -64,7 +64,14 @@ function ReminderRow({ r, now, suggestStop, onOpen }: { r: Reminder; now: string
     sub = `Hạn ${formatDateTime(r.dueAt)}`;
     badge = d >= 1 ? `Quá hạn ${d} ngày` : 'Quá hạn hôm nay';
   } else if (r.kind === 'followup') {
-    sub = suggestStop ? 'Đủ số lần bám, hệ thống đề xuất ngừng bám (Sale xác nhận)' : 'Khách chưa phản hồi, cần bám lại';
+    const due = r.dueAt !== null && new Date(r.dueAt).getTime() <= new Date(now).getTime();
+    sub = suggestStop
+      ? 'Đủ số lần bám, hệ thống đề xuất ngừng bám (Sale xác nhận)'
+      : due
+        ? 'Đã quá 24 giờ kể từ tin cuối, khách chưa phản hồi: đến hạn bám lại'
+        : r.dueAt
+          ? `Đang được bám, đến hạn lần tiếp theo lúc ${formatDateTime(r.dueAt)}`
+          : 'Đang được bám';
     badge = r.title;
   } else if (r.dueAt) {
     sub = formatDateTime(r.dueAt);
@@ -125,7 +132,9 @@ export function HomeView() {
 
   const overdueNames = [...new Set(h.overdue.map((t) => t.displayName))];
   const upcoming = h.reminders.filter((r) => r.kind === 'upcoming').length;
-  const following = h.reminders.filter((r) => r.kind === 'followup').length;
+  const followups = h.reminders.filter((r) => r.kind === 'followup');
+  const dueFollow = followups.filter((r) => r.dueAt !== null && new Date(r.dueAt).getTime() <= new Date(h.now).getTime()).length;
+  const following = followups.length;
   const stopIds = new Set(h.suggestStop.map((s) => s.id));
   const first = h.p1[0];
 
@@ -155,7 +164,7 @@ export function HomeView() {
           accent="blue"
           label="Lịch nhắc sắp tới"
           value={upcoming + following}
-          detail={upcoming + following === 0 ? 'Chưa có lịch nhắc' : `${upcoming} việc sắp đến hạn, ${following} khách đang được bám`}
+          detail={upcoming + following === 0 ? 'Chưa có lịch nhắc' : `${upcoming} việc sắp đến hạn, ${dueFollow} khách đến hạn bám, ${following - dueFollow} khách đang được bám`}
         />
         <DepositCard amount={h.depositToday ?? 0} onOpen={() => setView('orders')} />
       </div>

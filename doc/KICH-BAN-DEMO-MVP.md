@@ -40,7 +40,7 @@ Bốn khách nền, có sẵn trong Inbox:
 | Chị Thu | Nhắn 08:40 hỏi cách thanh toán, chưa ai trả lời. Gắn **P1** | 0, 6 |
 | Anh Đức | Việc "gọi lại báo giá" hạn Thứ Năm 08:00, chưa làm. **Quá hạn** | 0, 6 |
 | Chị Ngọc | Việc "nhắc thanh toán" hạn Thứ Năm 08:30, chưa làm. **Quá hạn** | 0, 6 |
-| Cô Mai | **Bám 4/5**, khách im lặng | 2 |
+| Cô Mai | **Bám 5/5** (Page đã trả lời rồi bám 5 lần, mỗi lần cách 24 giờ), khách im lặng; mới nhắn lần cuối 10:30 Thứ Tư nên chưa đủ 24 giờ chờ để đề xuất ngừng | 2 |
 
 Định nghĩa dùng cho demo (drawio không định nghĩa, xem mục 10): P1 là khách có tín hiệu mua hoặc hỏi thanh toán mà chưa được trả lời quá 15 phút; quá hạn là việc có hạn đã qua mà chưa hoàn thành.
 
@@ -69,15 +69,15 @@ Tài liệu giả cần chuẩn bị: một ảnh bill chuyển khoản **tự d
 
 | Ai | Thao tác | Hệ thống hiện | Lời dẫn |
 |---|---|---|---|
-| Người dẫn | Bấm "Tua đồng hồ" tới **Thứ Sáu 13/11, 09:30** | Đồng hồ góc màn hình nhảy. Lịch nhắc của Lan thêm dòng cam: **"Anh Minh, Bám 1/5 (24 giờ chưa phản hồi)"**. Hộp đề xuất xuất hiện mục cho Cô Mai: **"AI đề xuất Ngừng bám"**, lý do "5/5 lượt bám không phản hồi" | "Một ngày trôi qua, khách im lặng." |
+| Người dẫn | Bấm "Tua đồng hồ" tới **Thứ Sáu 13/11, 09:30** | Đồng hồ góc màn hình nhảy. Lịch nhắc của Lan thêm dòng cam: **"Anh Minh, Đến hạn bám lần 1/5"** (Lan mới trả lời, chưa bám lần nào, nhưng đã quá 24 giờ). Hộp đề xuất xuất hiện mục cho Cô Mai: **"AI đề xuất Ngừng bám"**, lý do "5/5 lượt bám không phản hồi" | "Một ngày trôi qua, khách im lặng." |
 | Lan | Mở Cô Mai, bấm **Xác nhận ngừng bám** | Cô Mai chuyển "Đã ngừng bám", ghi "Đã duyệt bởi Lan". Chú thích nhỏ: "Hệ thống chỉ đề xuất, việc bỏ bám do Sale xác nhận" | "Dừng chăm một khách là quyết định của người, không phải của AI." |
-| Lan | Mở Anh Minh, nhắn ở Page Inbox: **"Anh Minh ơi, mẫu Sofa Milan xám em gửi hôm qua anh xem thế nào ạ? Anh cho em xin SĐT để em giữ hàng nhé."** | Tin Page hiện trong chat. Dòng nhắc "Bám 1/5" chuyển "đã xử lý" | |
+| Lan | Mở Anh Minh, nhắn ở Page Inbox: **"Anh Minh ơi, mẫu Sofa Milan xám em gửi hôm qua anh xem thế nào ạ? Anh cho em xin SĐT để em giữ hàng nhé."** | Tin Page hiện trong chat. Tin này cách tin trả lời trước hơn 24 giờ nên tính là **lần bám thứ nhất**: dòng chuyển "Bám 1/5", hết "đến hạn" | |
 
 ### Cảnh 3. Khách quay lại, có SĐT, hẹn mơ hồ (1:30), 09:40
 
 | Ai | Thao tác | Hệ thống hiện | Lời dẫn |
 |---|---|---|---|
-| Khách | **"Anh Minh đây, hôm qua bận quá. SĐT anh 0912 345 678. Cuối tuần này anh ghé shop xem được không?"** | Inbox: bộ đếm "Bám 1/5" về **0/5 (đã reset 1/2)**, vì tin có thông tin mới (hẹn lịch) | |
+| Khách | **"Anh Minh đây, hôm qua bận quá. SĐT anh 0912 345 678. Cuối tuần này anh ghé shop xem được không?"** | Inbox: bộ đếm "Bám 1/5" về **0/5** (khách phản hồi thì về 0), vì tin có thông tin mới (hẹn lịch) | |
 | AI | Tự chạy | Thẻ khách: *Tên:* "Minh" (**AI điền, chưa duyệt**). Hộp đề xuất, 2 mục cần duyệt: **(1) SĐT** "0912 345 678", dấu ✓ hợp lệ, có câu gốc. **(2) Mốc hẹn**, cụm gốc "**cuối tuần này**", nhãn **Cần xác nhận**: "Chưa có ngày. Tin gửi lúc Thứ Sáu 13/11 09:40", ô chọn ngày giờ **để trống** | "Chỗ này AI dừng lại. 'Cuối tuần' là Thứ Bảy hay Chủ Nhật, sáng hay chiều? AI không đoán." |
 | Lan | Chọn **Thứ Bảy 14/11/2026, 10:00**, bấm **Duyệt 2 mục** | Hai mục chuyển "Đã duyệt bởi Lan, 09:41". Trạng thái khách: **Theo dõi và chốt đơn**. Lịch chăm sóc lại: "**Thứ Bảy 14/11 10:00**, lý do: ngày hẹn đã xác nhận (ưu tiên 1)" | "Ngày hẹn là do người chọn. Hệ thống dùng đúng ngày đó để nhắc." |
 
@@ -149,7 +149,7 @@ Quy tắc không đổi so với CLAUDE.md: dữ liệu chưa duyệt chỉ nằ
 ## 10. Giả định cần xác nhận
 
 1. Sản phẩm, mã SF-021, giá, tên khách, số điện thoại, địa chỉ đều do tôi bịa cho demo.
-2. Bộ đếm bám tăng 1 sau mỗi 24 giờ khách im lặng. Drawio không ghi cách đếm.
+2. **Bộ đếm bám đếm hành động chăm sóc thật của nhân viên, không đếm ngày** (đổi 2026-11-11, vì cách đếm theo ngày làm 37/62 hội thoại Page thật hiện 5/5 dù mới nhắn 1 lần). Tin Page đầu tiên sau khách là trả lời, không tính; mỗi tin Page tiếp theo cách mốc trước ít nhất 24 giờ là một lần bám; tin dồn trong 24 giờ chỉ tính một; tối đa 5; khách phản hồi thì về 0. Sau tin Page cuối quá 24 giờ mà chưa đủ 5 lần thì **đến hạn bám** (hiện ở Lịch nhắc). Đủ 5 lần và chờ thêm 24 giờ mà khách vẫn im thì mới đề xuất ngừng. Drawio không ghi cách đếm. Ngưỡng 24 giờ là hằng số `FOLLOWUP_GAP_MS`.
 3. Ngưỡng 50% tính trên một bill so với tổng đơn. Drawio không nói có cộng dồn nhiều lần chuyển khoản không.
 4. P1 và "quá hạn SLA" dùng định nghĩa ở mục 4. Drawio và đề án chưa định nghĩa hai khái niệm này.
 5. Lịch nhắc của Lan hiện thêm một dòng "sắp tới" (Anh Minh, Thứ Bảy). Drawio chỉ ghi "trong ngày".

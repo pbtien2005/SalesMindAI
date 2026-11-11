@@ -367,7 +367,7 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
 
 async function conversationTimes(db: Db, tenantId: string, conversationId: string) {
   const [c] = await db
-    .select({ lastPageMessageAt: conversations.lastPageMessageAt, lastUserInteractionAt: conversations.lastUserInteractionAt })
+    .select({ lastUserInteractionAt: conversations.lastUserInteractionAt })
     .from(conversations)
     .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId)));
   return c ?? null;

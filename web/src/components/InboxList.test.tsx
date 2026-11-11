@@ -10,9 +10,9 @@ const NOW = '2026-11-12T02:00:00.000Z';
 const list = [
   summary({ id: 'thu', displayName: 'Chị Thu', isP1: true, isNew: false, waitingMinutes: 22, lastMessageText: 'Mình chuyển khoản luôn được không bạn?' }),
   summary({ id: 'minh', displayName: 'Anh Minh', isNew: true, waitingMinutes: 8 }),
-  summary({ id: 'duc', displayName: 'Anh Đức', isNew: false, waitingOn: 'customer', waitingMinutes: 1500, lastMessageAt: '2026-11-11T02:00:00Z', lastMessageText: 'Để mình hỏi vợ rồi báo lại nhé', followup: { count: 3, max: 5, stopped: false, suggestStop: false } }),
-  summary({ id: 'mai', displayName: 'Cô Mai', isNew: false, waitingOn: 'customer', followup: { count: 5, max: 5, stopped: false, suggestStop: true } }),
-  summary({ id: 'ngoc', displayName: 'Chị Ngọc', isNew: false, waitingOn: 'customer', followup: { count: 5, max: 5, stopped: true, suggestStop: false } }),
+  summary({ id: 'duc', displayName: 'Anh Đức', isNew: false, waitingOn: 'customer', waitingMinutes: 1500, lastMessageAt: '2026-11-11T02:00:00Z', lastMessageText: 'Để mình hỏi vợ rồi báo lại nhé', followup: { count: 3, max: 5, stopped: false, suggestStop: false, due: false, dueAt: null } }),
+  summary({ id: 'mai', displayName: 'Cô Mai', isNew: false, waitingOn: 'customer', followup: { count: 5, max: 5, stopped: false, suggestStop: true, due: false, dueAt: null } }),
+  summary({ id: 'ngoc', displayName: 'Chị Ngọc', isNew: false, waitingOn: 'customer', followup: { count: 5, max: 5, stopped: true, suggestStop: false, due: false, dueAt: null } }),
 ];
 
 const show = (selectedId: string | null = null, onSelect = vi.fn()) => {
@@ -37,6 +37,14 @@ describe('InboxList', () => {
     expect(within(screen.getByRole('button', { name: /Anh Đức/ })).getByText('Bám 3/5')).toBeTruthy();
     expect(within(screen.getByRole('button', { name: /Cô Mai/ })).getByText('Bám 5/5, đề xuất ngừng')).toBeTruthy();
     expect(within(screen.getByRole('button', { name: /Chị Ngọc/ })).getByText('Đã ngừng bám')).toBeTruthy();
+  });
+
+  it('đã quá 24 giờ mà chưa bám đủ: chip "Đến hạn bám lần n+1", không hiện là đã bám đủ', () => {
+    const due = summary({ id: 'due', displayName: 'Chị Lụa', isNew: false, waitingOn: 'customer', followup: { count: 0, max: 5, stopped: false, suggestStop: false, due: true, dueAt: '2026-11-12T00:00:00.000Z' } });
+    render(<InboxList conversations={[due]} now="2026-11-13T02:45:00.000Z" selectedId={null} onSelect={() => {}} />);
+    const row = screen.getByRole('button', { name: /Chị Lụa/ });
+    expect(within(row).getByText('Đến hạn bám lần 1/5')).toBeTruthy();
+    expect(within(row).queryByText(/Bám 5\/5/)).toBeNull();
   });
 
   it('lọc P1 và Chưa trả lời', async () => {

@@ -17,7 +17,7 @@ const T3 = 'Số mình là 0912 345 678. Cuối tuần này mình ghé xem đư�
 
 function scene3(): ConversationDetail {
   return detail({
-    summary: summary({ id: 'c-minh', displayName: 'Minh', followup: { count: 0, max: 5, stopped: false, suggestStop: false } }),
+    summary: summary({ id: 'c-minh', displayName: 'Minh', followup: { count: 0, max: 5, stopped: false, suggestStop: false, due: false, dueAt: null } }),
     messages: [
       msg('m1', T1, { sentAt: '2026-11-12T02:12:00.000Z' }),
       msg('m2', 'Dạ chào anh, bên em có mẫu sofa góc Oslo màu xám ạ.', { direction: 'outbound', senderKind: 'page_inbox', sentAt: '2026-11-12T02:15:00.000Z' }),
@@ -156,7 +156,7 @@ describe('ChatView (cảnh 3)', () => {
 
   it('"Ngừng bám" ở đầu khung chat cần xác nhận mới gọi API', async () => {
     const d = scene3();
-    d.summary = { ...d.summary, followup: { count: 2, max: 5, stopped: false, suggestStop: false } };
+    d.summary = { ...d.summary, followup: { count: 2, max: 5, stopped: false, suggestStop: false, due: false, dueAt: null } };
     const f = serve(d);
     const user = userEvent.setup();
     renderApp(<ChatView />);
@@ -174,9 +174,9 @@ describe('ChatView (cảnh 3)', () => {
 
   it('đổi sang hội thoại đã có trong bộ nhớ đệm thì bản nháp và hộp xác nhận "Ngừng bám" không rò sang', async () => {
     const a = scene3();
-    a.summary = { ...a.summary, id: 'c-a', displayName: 'Khách A', lastMessageAt: '2026-11-13T02:45:00.000Z', followup: { count: 2, max: 5, stopped: false, suggestStop: false } };
+    a.summary = { ...a.summary, id: 'c-a', displayName: 'Khách A', lastMessageAt: '2026-11-13T02:45:00.000Z', followup: { count: 2, max: 5, stopped: false, suggestStop: false, due: false, dueAt: null } };
     const b = scene3();
-    b.summary = { ...b.summary, id: 'c-b', displayName: 'Khách B', lastMessageAt: '2026-11-13T02:00:00.000Z', followup: { count: 2, max: 5, stopped: false, suggestStop: false } };
+    b.summary = { ...b.summary, id: 'c-b', displayName: 'Khách B', lastMessageAt: '2026-11-13T02:00:00.000Z', followup: { count: 2, max: 5, stopped: false, suggestStop: false, due: false, dueAt: null } };
     const f = mockFetch((url) => {
       if (url.startsWith('/api/inbox')) return json({ now: '2026-11-13T02:45:00.000Z', conversations: [a.summary, b.summary] });
       if (url === '/api/conversations/c-a') return json(a);

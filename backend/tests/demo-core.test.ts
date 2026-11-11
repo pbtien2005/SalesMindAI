@@ -25,49 +25,69 @@ const H = 3600_000;
 const D = 24 * H;
 const T0 = new Date('2026-11-10T00:00:00Z');
 
-describe('followupCount (tính khi đọc)', () => {
-  const page = T0;
-  const c = (user: Date | null) => ({ lastPageMessageAt: page, lastUserInteractionAt: user });
+describe('followupCount (tính khi đọc, theo tin Page thật)', () => {
+  /** Tin Page gửi lần lượt tại T0 + các mốc (ms), sau lần khách hành động cuối. */
+  const pages = (...offsets: number[]) => ({ lastUserInteractionAt: null, pageMessagesAfterUser: offsets.map((o) => new Date(T0.getTime() + o)) });
+  const at = (ms: number) => new Date(T0.getTime() + ms);
+
+  it('Page chưa nhắn gì sau khách: 0 và không có gì để bám', () => {
+    expect(followupStatus(pages(), null, at(9 * D))).toMatchObject({ count: 0, due: false, dueAt: null, suggestStop: false });
+  });
+
+  it('tin Page đầu tiên là trả lời, chưa tính là bám: im 10 ngày vẫn 0 nhưng ĐẾN HẠN bám lần 1', () => {
+    const st = followupStatus(pages(0), null, at(10 * D));
+    expect(st).toMatchObject({ count: 0, due: true, suggestStop: false });
+    expect(st.dueAt!.getTime()).toBe(T0.getTime() + D);
+  });
+
+  it('chưa đủ 24 giờ kể từ tin Page cuối thì chưa đến hạn', () => {
+    expect(followupStatus(pages(0), null, at(D - 1))).toMatchObject({ count: 0, due: false });
+    expect(followupStatus(pages(0), null, at(D))).toMatchObject({ due: true });
+  });
+
   it.each([
-    [0, 0],
-    [23 * H + 59 * 60_000, 0],
-    [24 * H, 1],
-    [47 * H, 1],
-    [48 * H, 2],
-    [4 * D + 10 * 60_000, 4],
-    [5 * D, 5],
-    [30 * D, 5], // tối đa 5
-  ])('sau %i ms kể từ tin Page cuối: bám %i', (elapsed, expected) => {
-    expect(followupCount(c(null), new Date(page.getTime() + elapsed))).toBe(expected);
+    [[0, D], 1],
+    [[0, D - 1], 0], // cách chưa đủ 24 giờ thì không tính
+    [[0, D, 2 * D], 2],
+    [[0, D, 2 * D, 3 * D, 4 * D, 5 * D], 5],
+    [[0, D, 2 * D, 3 * D, 4 * D, 5 * D, 6 * D, 7 * D], 5], // tối đa 5
+  ])('tin Page lúc %j: bám %i', (offsets, expected) => {
+    expect(followupCount(pages(...(offsets as number[])), at(30 * D))).toBe(expected);
   });
 
-  it('khách có hành động sau (hoặc đúng lúc) tin Page cuối thì về 0', () => {
-    const now = new Date(page.getTime() + 3 * D);
-    expect(followupCount(c(new Date(page.getTime() + H)), now)).toBe(0);
-    expect(followupCount(c(page), now)).toBe(0);
-    // Khách nhắn TRƯỚC tin Page cuối thì vẫn đang bị bám.
-    expect(followupCount(c(new Date(page.getTime() - H)), now)).toBe(3);
+  it('nhiều tin gửi dồn trong cùng 24 giờ chỉ tính một lần', () => {
+    // Trả lời, rồi 3 tin cách nhau vài phút, rồi 1 tin sau 25 giờ: chỉ 1 lần bám (tin dồn bị bỏ, tin sau 25 giờ tính).
+    expect(followupCount(pages(0, 5 * 60_000, 10 * 60_000, 25 * H), at(30 * D))).toBe(1);
   });
 
-  it('Page chưa nhắn gì, hoặc giờ hiện tại trước tin Page cuối: 0', () => {
-    expect(followupCount({ lastPageMessageAt: null, lastUserInteractionAt: page }, new Date(page.getTime() + 9 * D))).toBe(0);
-    expect(followupCount(c(null), new Date(page.getTime() - D))).toBe(0);
+  it('tin Page ở tương lai (so với now) bị bỏ qua', () => {
+    expect(followupCount(pages(0, D, 2 * D), at(D + H))).toBe(1);
+  });
+
+  it('không phụ thuộc thứ tự đầu vào', () => {
+    expect(followupCount(pages(2 * D, 0, D), at(30 * D))).toBe(2);
   });
 });
 
 describe('followupStatus và stopFollowup', () => {
-  it('đủ 5/5 thì đề xuất ngừng; đã ngừng thì không đề xuất nữa; khách quay lại thì hết "đã ngừng"', () => {
-    const times = { lastPageMessageAt: T0, lastUserInteractionAt: null };
-    const now = new Date(T0.getTime() + 5 * D);
-    expect(followupStatus(times, null, now)).toMatchObject({ count: 5, stopped: false, suggestStop: true });
-    expect(followupStatus(times, now, now)).toMatchObject({ stopped: true, suggestStop: false });
-    const returned = { ...times, lastUserInteractionAt: new Date(now.getTime() + H) };
-    expect(followupStatus(returned, now, new Date(now.getTime() + 2 * H))).toMatchObject({ stopped: false, count: 0 });
+  const fiveFollowups = { lastUserInteractionAt: null, pageMessagesAfterUser: [0, 1, 2, 3, 4, 5].map((i) => new Date(T0.getTime() + i * D)) };
+
+  it('đủ 5 lần bám: chờ thêm 24 giờ rồi mới đề xuất ngừng; không còn "đến hạn" nữa', () => {
+    const last = T0.getTime() + 5 * D;
+    expect(followupStatus(fiveFollowups, null, new Date(last + 23 * H))).toMatchObject({ count: 5, suggestStop: false, due: false, dueAt: null });
+    expect(followupStatus(fiveFollowups, null, new Date(last + D))).toMatchObject({ count: 5, suggestStop: true, due: false });
+  });
+
+  it('đã ngừng thì không đề xuất, không đến hạn; khách quay lại thì hết "đã ngừng" và về 0', () => {
+    const now = new Date(T0.getTime() + 7 * D);
+    expect(followupStatus(fiveFollowups, now, now)).toMatchObject({ stopped: true, suggestStop: false, due: false });
+    const returned = { lastUserInteractionAt: new Date(now.getTime() + H), pageMessagesAfterUser: [] };
+    expect(followupStatus(returned, now, new Date(now.getTime() + 2 * H))).toMatchObject({ stopped: false, count: 0, due: false });
   });
 
   it('Sale xác nhận ngừng bám; ngừng hai lần thì từ chối', async () => {
     const base = await seedBase(db, { aiEnabled: true });
-    const times = { lastPageMessageAt: T0, lastUserInteractionAt: null };
+    const times = { lastUserInteractionAt: null };
     const now = new Date(T0.getTime() + 5 * D);
     await stopFollowup(db, { tenantId: base.tenantId, conversationId: base.conversationId, by: 'Lan' }, times, now);
     const [row] = await db.select().from(followupState);
@@ -107,7 +127,7 @@ describe('dữ liệu nền demo', () => {
   const REAL = new Date('2026-11-10T05:00:00Z');
   const reset = () => resetDemo({ db, crypto, log, realNow: REAL });
 
-  it('đúng trạng thái 09:00 Thứ Năm 12/11: P1 = 1 (chị Thu), quá hạn = 2, Cô Mai bám 4/5, số liệu AI = 0', async () => {
+  it('đúng trạng thái 09:00 Thứ Năm 12/11: P1 = 1 (chị Thu), quá hạn = 2, Cô Mai bám 5/5 (chưa đủ 24 giờ chờ nên chưa đề xuất ngừng), số liệu AI = 0', async () => {
     const ctx = await reset();
     expect(ctx.clockNow.toISOString()).toBe(DEMO_START.toISOString());
     const home = await loadHome(db, ctx.tenantId, DEMO_START);
@@ -120,7 +140,7 @@ describe('dữ liệu nền demo', () => {
 
     const kinds = home.reminders.map((r) => `${r.kind}:${r.displayName}`);
     expect(kinds).toEqual(['overdue:Anh Đức', 'overdue:Chị Ngọc', 'followup:Cô Mai']);
-    expect(home.reminders.find((r) => r.kind === 'followup')!.title).toBe('Bám 4/5');
+    expect(home.reminders.find((r) => r.kind === 'followup')!.title).toBe('Bám 5/5');
   });
 
   it('chị Thu chờ 20 phút: P1 chỉ khi quá 15 phút', async () => {

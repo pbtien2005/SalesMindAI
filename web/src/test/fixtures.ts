@@ -9,7 +9,7 @@ export const summary = (over: Partial<ConversationSummary> = {}): ConversationSu
   lastMessageText: 'Cuối tuần này mình ghé xem được không?',
   waitingOn: 'page',
   waitingMinutes: 8,
-  followup: { count: 0, max: 5, stopped: false, suggestStop: false },
+  followup: { count: 0, max: 5, stopped: false, suggestStop: false, due: false, dueAt: null },
   isP1: false,
   isNew: true,
   ...over,

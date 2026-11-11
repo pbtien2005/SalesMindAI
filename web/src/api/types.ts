@@ -29,8 +29,12 @@ export interface FollowupStatus {
   max: number;
   /** Sale đã quyết định ngừng bám. */
   stopped: boolean;
-  /** Đủ max/max mà chưa ngừng: hệ thống chỉ ĐỀ XUẤT, Sale xác nhận. */
+  /** Đủ max/max lần bám và đã chờ thêm 24 giờ mà chưa ngừng: hệ thống chỉ ĐỀ XUẤT, Sale xác nhận. */
   suggestStop: boolean;
+  /** Đã quá 24 giờ kể từ tin Page cuối mà khách chưa phản hồi, và chưa đủ lần: đến hạn bám lần tiếp theo. */
+  due: boolean;
+  /** Lúc đến hạn bám lần tiếp theo (null nếu không có gì để bám). */
+  dueAt: string | null;
 }
 
 export interface ConversationSummary {

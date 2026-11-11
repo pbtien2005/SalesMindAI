@@ -70,6 +70,19 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
     SELECT DISTINCT ON (conversation_id) conversation_id, id FROM messages
     WHERE tenant_id = ${tenantId} AND conversation_id IN (${idList}) AND direction = 'inbound' AND text IS NOT NULL AND text <> ''
     ORDER BY conversation_id, sent_at DESC, id DESC`);
+  // Giờ các tin Page gửi SAU lần khách hành động cuối: nền để tính số lần bám thật (xem followup.ts).
+  const pageRows = await db.execute<{ conversation_id: string; sent_at: Date | string }>(sql`
+    SELECT m.conversation_id, m.sent_at FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id AND c.tenant_id = m.tenant_id
+    WHERE m.tenant_id = ${tenantId} AND m.conversation_id IN (${idList}) AND m.direction = 'outbound'
+      AND (c.last_user_interaction_at IS NULL OR m.sent_at > c.last_user_interaction_at)
+    ORDER BY m.conversation_id, m.sent_at`);
+  const pageAfterUser = new Map<string, Date[]>();
+  for (const r of pageRows.rows) {
+    const list = pageAfterUser.get(r.conversation_id) ?? [];
+    list.push(new Date(r.sent_at));
+    pageAfterUser.set(r.conversation_id, list);
+  }
   const textByConv = new Map(lastAny.rows.map((r) => [r.conversation_id, r.text]));
   const lastInboundId = new Map(lastInbound.rows.map((r) => [r.conversation_id, r.id]));
 
@@ -114,7 +127,7 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
 
   return convs
     .map((c): ConversationSummary => {
-      const times = { lastPageMessageAt: c.lastPageMessageAt, lastUserInteractionAt: c.lastUserInteractionAt };
+      const followup = followupStatus({ lastUserInteractionAt: c.lastUserInteractionAt, pageMessagesAfterUser: pageAfterUser.get(c.id) ?? [] }, stoppedAt.get(c.id) ?? null, now);
       const customerWaiting = c.lastUserInteractionAt !== null && (c.lastPageMessageAt === null || c.lastUserInteractionAt > c.lastPageMessageAt);
       const pageWaiting = !customerWaiting && c.lastPageMessageAt !== null;
       const waitingOn = customerWaiting ? 'page' : pageWaiting ? 'customer' : null;
@@ -129,10 +142,10 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
         lastMessageText: textByConv.get(c.id) ?? null,
         waitingOn,
         waitingMinutes,
-        followup: followupStatus(times, stoppedAt.get(c.id) ?? null, now),
+        followup,
         isP1: waitingOn === 'page' && (waitingMinutes ?? 0) > P1_WAIT_MINUTES && hasBuySignal.has(c.id),
         isNew: customerWaiting && c.lastPageMessageAt === null,
-        stage: apptAt.has(c.id) ? 'tracking' : !hasPhone.has(c.id) && (followupStatus(times, stoppedAt.get(c.id) ?? null, now).count === 0) ? 'new' : 'chasing',
+        stage: apptAt.has(c.id) ? 'tracking' : !hasPhone.has(c.id) && followup.count === 0 && !followup.due ? 'new' : 'chasing',
         closeSignal: closeSignals.get(c.id) ?? null,
         nextContact: apptAt.has(c.id) ? { at: apptAt.get(c.id)!, reason: 'Ngày hẹn đã xác nhận (ưu tiên 1)' } : null,
       };
@@ -147,7 +160,7 @@ export interface Reminder {
   conversationId: string;
   displayName: string;
   title: string;
-  /** Hạn của việc (với `followup` là null). */
+  /** Hạn của việc. Với `followup`: lúc đến hạn bám lần tiếp theo (null khi không có gì để bám). */
   dueAt: Date | null;
 }
 
@@ -199,9 +212,18 @@ export async function loadHome(db: Db, tenantId: string, now: Date): Promise<Hom
   const reminders: Reminder[] = [
     ...overdue.map((t): Reminder => ({ kind: 'overdue', conversationId: t.conversationId, displayName: t.displayName, title: t.title, dueAt: t.dueAt })),
     ...summaries
-      .filter((s) => !s.followup.stopped && s.followup.count >= 1)
-      .sort((a, b) => b.followup.count - a.followup.count)
-      .map((s): Reminder => ({ kind: 'followup', conversationId: s.id, displayName: s.displayName, title: `Bám ${s.followup.count}/${s.followup.max}`, dueAt: null })),
+      // Việc cần làm trước: đã đến hạn bám lần tiếp theo (hạn cũ nhất trước), rồi các khách đang được bám (nhiều lần trước).
+      .filter((s) => !s.followup.stopped && (s.followup.due || s.followup.count >= 1))
+      .sort((a, b) => Number(b.followup.due) - Number(a.followup.due) || (a.followup.dueAt?.getTime() ?? 0) - (b.followup.dueAt?.getTime() ?? 0) || b.followup.count - a.followup.count)
+      .map(
+        (s): Reminder => ({
+          kind: 'followup',
+          conversationId: s.id,
+          displayName: s.displayName,
+          title: s.followup.due ? `Đến hạn bám lần ${s.followup.count + 1}/${s.followup.max}` : `Bám ${s.followup.count}/${s.followup.max}`,
+          dueAt: s.followup.dueAt,
+        }),
+      ),
     ...open
       .filter((t) => t.dueAt >= now)
       .map((t): Reminder => ({ kind: 'upcoming', conversationId: t.conversationId, displayName: name(t.conversationId), title: t.title, dueAt: t.dueAt })),

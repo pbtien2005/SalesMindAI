@@ -122,11 +122,18 @@ const CUSTOMERS: SeedCustomer[] = [
     task: { title: 'Nhắc thanh toán', dueAt: vn(2026, 11, 12, 8, 30) },
   },
   {
-    // Bám 4/5 lúc 09:00 Thứ Năm; đủ 5/5 sau 09:00 Thứ Sáu.
+    // Đã bám đủ 5/5 (tin trả lời rồi 5 lần bám, mỗi lần cách nhau 24 giờ, khách im lặng). Tin Page cuối lúc 10:30 Thứ
+    // Tư, nên tới 10:30 Thứ Năm mới đủ 24 giờ chờ: lúc 09:00 Thứ Năm chỉ hiện "Bám 5/5", sau mốc đó (cảnh 2, Thứ Sáu
+    // 09:30) hệ thống mới đề xuất ngừng bám.
     persona: PERSONAS.mai!,
     messages: [
-      { dir: 'in', at: vn(2026, 11, 7, 10, 0), text: 'Cô muốn xem báo giá bộ sofa góc' },
-      { dir: 'out', at: vn(2026, 11, 8, 8, 50), text: 'Dạ em gửi cô báo giá bộ sofa góc 25 triệu ạ' },
+      { dir: 'in', at: vn(2026, 11, 6, 10, 0), text: 'Cô muốn xem báo giá bộ sofa góc' },
+      { dir: 'out', at: vn(2026, 11, 6, 10, 30), text: 'Dạ em gửi cô báo giá bộ sofa góc 25 triệu ạ' },
+      { dir: 'out', at: vn(2026, 11, 7, 10, 30), text: 'Cô ơi, báo giá em gửi hôm qua cô xem thế nào ạ?' },
+      { dir: 'out', at: vn(2026, 11, 8, 10, 30), text: 'Em nhắn lại để cô nắm chương trình giảm giá tuần này ạ' },
+      { dir: 'out', at: vn(2026, 11, 9, 10, 30), text: 'Cô cần em tư vấn thêm mẫu nào không ạ?' },
+      { dir: 'out', at: vn(2026, 11, 10, 10, 30), text: 'Em giữ giá cho cô đến cuối tuần nhé ạ' },
+      { dir: 'out', at: vn(2026, 11, 11, 10, 30), text: 'Cô có muốn em gọi tư vấn trực tiếp không ạ?' },
     ],
   },
 ];
