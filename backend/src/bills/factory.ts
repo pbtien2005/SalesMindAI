@@ -7,11 +7,18 @@ export interface BillReaderConfig {
   ANTHROPIC_API_KEY: string | undefined;
   AI_MODEL: string;
   AI_TIMEOUT_MS: number;
+  /** Trần token đầu ra mỗi lần gọi (mặc định của bộ đọc bill). Script đánh giá hạ xuống để giới hạn chi phí. */
+  maxTokens?: number;
 }
 
 /** `live` cần khóa API (không lặng lẽ chuyển sang bộ đọc mô phỏng). */
 export function createBillReader(cfg: BillReaderConfig): BillReader {
   if (cfg.AI_MODE === 'offline') return new OfflineBillReader();
   if (!cfg.ANTHROPIC_API_KEY) throw new Error('AI_MODE=live nhưng chưa đặt ANTHROPIC_API_KEY.');
-  return new AnthropicBillReader({ apiKey: cfg.ANTHROPIC_API_KEY, model: cfg.AI_MODEL, timeoutMs: cfg.AI_TIMEOUT_MS });
+  return new AnthropicBillReader({
+    apiKey: cfg.ANTHROPIC_API_KEY,
+    model: cfg.AI_MODEL,
+    timeoutMs: cfg.AI_TIMEOUT_MS,
+    ...(cfg.maxTokens !== undefined ? { maxTokens: cfg.maxTokens } : {}),
+  });
 }

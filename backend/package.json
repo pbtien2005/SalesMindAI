@@ -18,7 +18,8 @@
     "db:migrate": "tsx --env-file=.env src/db/migrate.ts",
     "cli": "tsx --env-file=.env src/cli/index.ts",
     "db:migrate:prod": "node --env-file=.env dist/db/migrate.js",
-    "eval:extraction": "tsx --env-file=.env scripts/eval-extraction.ts"
+    "eval:extraction": "tsx --env-file=.env scripts/eval-extraction.ts",
+    "eval:bills": "tsx --env-file=.env scripts/eval-bills.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

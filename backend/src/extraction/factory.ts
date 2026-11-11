@@ -7,6 +7,8 @@ export interface ExtractorConfig {
   ANTHROPIC_API_KEY: string | undefined;
   AI_MODEL: string;
   AI_TIMEOUT_MS: number;
+  /** Trần token đầu ra mỗi lần gọi (mặc định của bộ trích xuất). Script đánh giá hạ xuống để giới hạn chi phí. */
+  maxTokens?: number;
 }
 
 /**
@@ -16,5 +18,10 @@ export interface ExtractorConfig {
 export function createExtractor(cfg: ExtractorConfig): Extractor {
   if (cfg.AI_MODE === 'offline') return new OfflineExtractor();
   if (!cfg.ANTHROPIC_API_KEY) throw new Error('AI_MODE=live nhưng chưa đặt ANTHROPIC_API_KEY.');
-  return new AnthropicExtractor({ apiKey: cfg.ANTHROPIC_API_KEY, model: cfg.AI_MODEL, timeoutMs: cfg.AI_TIMEOUT_MS });
+  return new AnthropicExtractor({
+    apiKey: cfg.ANTHROPIC_API_KEY,
+    model: cfg.AI_MODEL,
+    timeoutMs: cfg.AI_TIMEOUT_MS,
+    ...(cfg.maxTokens !== undefined ? { maxTokens: cfg.maxTokens } : {}),
+  });
 }
