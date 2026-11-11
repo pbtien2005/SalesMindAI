@@ -1,171 +1,163 @@
-# SalesMind AI — Module 1: Tiếp nhận tin nhắn từ Facebook Page
+<div align="center">
 
-Module này nhận tin nhắn khách gửi vào Facebook Page của doanh nghiệp **và tin Page trả lời khách** (kể cả tin nhân viên gõ ở Page Inbox), kiểm tra tính xác thực, khử trùng và lưu vào PostgreSQL, để các module sau (AI trích nhu cầu, đề xuất việc, nhắc hạn) dùng làm dữ liệu đầu vào. Ghi nhận thêm lần tương tác cuối của khách (tin, reaction, postback, referral) và cảnh báo chính sách của Meta.
+# SalesMind AI
 
-**Phạm vi:** backend chỉ đọc và lưu tin, **không gửi tin cho khách**. AI trích xuất (Module 2) và giao diện demo `web/` (chạy khi `DEMO_MODE=true`) xem [doc/CHAY-DEMO.md](doc/CHAY-DEMO.md).
+**Không để cơ hội bán hàng nào bị bỏ quên.**
 
-> **Trạng thái:** mã nguồn và test tự động đã xong. Việc kết nối Page thật và nhận tin từ Meta thật **chưa được kiểm tra** (cần Meta App và Page của bạn). Xem [PROGRESS.md](PROGRESS.md) và [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md).
+Trợ lý AI cho đội Sale Việt Nam: đọc tin nhắn khách trên Facebook Page, rút ra nhu cầu, ngân sách, mốc thời gian, rồi đề xuất việc cần làm. Nhân viên xác nhận, hệ thống nhắc đúng hạn, quản lý nhìn thấy toàn cảnh.
 
-## Cách hoạt động
+![Node.js 26](https://img.shields.io/badge/Node.js-26_LTS-5FA04E?logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![Fastify 5](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
+![PostgreSQL 18](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Tailwind v4](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)
+
+</div>
+
+---
+
+## Vấn đề
+
+Đội Sale 5–30 người chốt đơn qua Messenger. Khách hỏi giá lúc 8 giờ sáng, nhân viên bận, tin chìm xuống. Một câu "cuối tuần này em qua xem" không ai ghi lại. Khách đặt cọc xong, đơn nằm trong một ảnh chụp màn hình. Quản lý chỉ biết khi khách đã đi chỗ khác.
+
+## Giải pháp
 
 ```
-Meta ──POST /webhook──▶ kiểm tra chữ ký ──▶ pg-boss (hàng đợi) ──▶ worker ──▶ PostgreSQL
-                         (trả 200 ngay)        retry + dead-letter    (khử trùng theo mid)
-
-Quản trị viên ──CLI──▶ liên kết dùng một lần ──▶ Facebook Login ──▶ lưu Page (token mã hóa)
-                                                                 └─▶ đăng ký webhook cho Page
-
-CLI backfill ──▶ pg-boss ──▶ worker ──▶ Graph API (Conversations) ──▶ PostgreSQL
+Khách nhắn vào Page ─▶ AI trích xuất ─▶ Đề xuất việc ─▶ Sale xác nhận ─▶ Nhắc hạn ─▶ Báo cáo quản lý
+   (Messenger)        (có câu gốc)     (không tự quyết)  (con người quyết)  (theo giờ)   (Trang chủ)
 ```
 
-Nguyên tắc cốt lõi:
-- `POST /webhook` chỉ kiểm tra chữ ký (HMAC-SHA256, so sánh timing-safe) rồi ghi vào hàng đợi và trả 200. Xử lý nặng làm ở worker.
-- Khử trùng theo `message.mid`: Meta có thể gửi lại cùng một tin nhiều lần (tới 36 giờ nếu ta không trả 200).
-- **Lưu cả tin của Page (echo).** Messenger gửi echo qua field riêng `message_echoes`; bỏ qua nó thì câu trả lời của nhân viên vô hình và không tính được "bao lâu khách chưa được trả lời". Mỗi tin có `direction` (inbound hoặc outbound) và, với tin của Page, `sender_kind` suy ra từ `app_id` (`page_app`, `page_inbox`, `page_other`, `page_unknown`).
-- `conversations.last_user_interaction_at` chỉ tính hành động của khách (tin, reaction, postback, referral), tách khỏi `last_page_message_at`. Quy tắc cửa sổ nhắn tin 24 giờ không nằm ở module này.
-- Không bỏ tin im lặng: tin chưa lưu được thì retry, hết retry thì vào dead-letter để chạy lại sau.
-- Page token luôn mã hóa khi lưu (AES-256-GCM). Token và nội dung tin không bao giờ vào log.
+### Ba nguyên tắc không thương lượng
 
-## Yêu cầu
+| | Nguyên tắc | Nghĩa là |
+|---|---|---|
+| 1 | **AI đề xuất, con người quyết định** | Ngừng bám, gửi tin, xác nhận cọc, tạo đơn đều cần Sale bấm. AI không tự làm. |
+| 2 | **Mọi thông tin AI trích đều kèm câu gốc** | Mỗi trường có `evidence` là chuỗi con đã được kiểm chứng trong tin khách. Không lưu chuỗi do mô hình tự viết. |
+| 3 | **Mốc thời gian mơ hồ thì hỏi lại** | "Cuối tuần này" hiện cờ để Sale chọn ngày. Không có đường nào tự điền ngày. |
 
-- Node.js 26 (xem `.nvmrc`)
-- Docker (PostgreSQL 18 cho môi trường dev)
-- Meta App và Facebook Page để thử với dữ liệu thật
+## Tính năng
 
-## Cài đặt và chạy
+**Tiếp nhận tin nhắn (Module 1)**
+- Nhận webhook từ Facebook Page, kiểm tra chữ ký HMAC-SHA256 (so sánh timing-safe), trả 200 trong vài mili giây rồi xử lý ở hàng đợi.
+- Khử trùng theo `message.mid`, retry rồi vào dead-letter: **không bỏ tin im lặng**.
+- Lưu **cả tin do Page gửi** (kể cả tin nhân viên gõ ở Page Inbox) để biết khách đã được trả lời chưa.
+- Backfill tin cũ, kết nối Page qua Facebook Login, Page token mã hóa AES-256-GCM.
 
-Repo gồm hai package độc lập: `backend/` (Fastify) và `web/` (Vite, giao diện demo). Mọi lệnh backend chạy trong `backend/`; từ gốc có thể dùng `npm run dev:api`, `test:api`, `typecheck`.
+**AI trích xuất (Module 2)**
+- Trích nhu cầu, ngân sách, mốc thời gian thành **đề xuất** chờ duyệt. Số điện thoại trích bằng code, không qua mô hình.
+- Hai chế độ: `offline` (luật tất định, không gọi mạng, mặc định) và `live` (Claude), phải bật tường minh theo từng tenant.
+- Có bộ đánh giá trích xuất riêng, đo token và ngân sách.
+
+**Giao diện làm việc**
+- **Hội thoại** có hộp thư, thẻ khách và Hộp đề xuất ngay bên cạnh khung chat.
+- **Trang chủ** cho quản lý: hội thoại ưu tiên (P1), việc quá hạn, tiền cọc thực tế, lịch nhắc.
+- **Đơn nháp và thanh toán:** AI đọc số tiền từ ảnh bill, Sale xác nhận cọc rồi hệ thống cấp mã đơn.
+- Số lần bám khách, quá hạn và lịch nhắc **tính khi đọc** từ dữ liệu, không lưu số đếm nên không bao giờ lệch.
+
+**Nền tảng sản phẩm**
+- Tài khoản đăng nhập thật (email và mật khẩu), nhiều doanh nghiệp, vai trò owner, manager, sale.
+- Cách ly tenant: tenant lấy từ phiên đăng nhập, không bao giờ từ client; tài nguyên của tenant khác trả 404. Test cách ly tự liệt kê mọi route.
+- Gửi tin cho khách **chỉ khi người dùng bấm gửi**, có kiểm cửa sổ 24 giờ trước khi gọi Meta.
+
+## Kiến trúc
+
+```
+                        ┌──────────────────────── Backend (Fastify 5) ────────────────────────┐
+ Facebook ──webhook──▶  │  Chữ ký ─▶ pg-boss ─▶ Worker ─▶ PostgreSQL 18 ◀── Drizzle ORM       │
+ Page                   │                          │                                            │
+                        │                          ▼                                            │
+                        │           Pipeline trích xuất (offline / live) ─▶ Đề xuất (proposals) │
+                        │                          │                                            │
+                        │           Service duyệt ─▶ Hồ sơ khách ─▶ Đơn hàng, thanh toán       │
+                        └──────────────────────────┬────────────────────────────────────────────┘
+                                                   │ /api/* (cookie phiên, chống CSRF)
+                                                   ▼
+                              Giao diện web (React 19, Vite, TanStack Query, Tailwind v4)
+```
+
+| Lớp | Công nghệ |
+|---|---|
+| Backend | Node.js 26, TypeScript, Fastify 5 (pino) |
+| Dữ liệu | PostgreSQL 18, Drizzle ORM, hàng đợi pg-boss (chạy ngay trên Postgres, không cần Redis) |
+| AI | Luật tất định (offline) hoặc Claude (live), kiểm chứng câu gốc bằng code |
+| Giao diện | React 19, Vite, TanStack Query, Tailwind v4 |
+| Kiểm thử | Vitest (Postgres và pg-boss thật), kịch bản Chrome đi hết 7 cảnh demo |
+| Triển khai | Docker một image (API và giao diện), Render + Neon, hoặc VM với Caddy |
+
+## Bảo mật và quyền riêng tư
+
+- Webhook sai chữ ký trả 403; token Page mã hóa khi lưu.
+- Không ghi vào log: nội dung tin nhắn, câu gốc, giá trị AI trích, số tiền, token, query string.
+- Không hard-code secret; mọi cấu hình qua biến môi trường.
+- AI bật **theo từng tenant** và mặc định tắt. Chỉ nên bật `live` cho khách thật sau khi có kiểm tra pháp lý về chuyển dữ liệu ra nước ngoài (Luật 91/2025/QH15, chưa được luật sư xác nhận).
+
+## Bắt đầu nhanh
+
+Cần Node.js 26 (`.nvmrc`) và Docker.
 
 ```bash
-docker compose up -d          # ở gốc repo: PostgreSQL 18 ở cổng 5433
+docker compose up -d                 # PostgreSQL 18 ở cổng 5433
 cd backend
 npm install
-cp .env.example .env          # rồi điền giá trị, xem bảng bên dưới
+cp .env.example .env                 # đặt DEMO_MODE=true để chạy demo
 npm run db:migrate
-npm run dev                   # http://localhost:3000
+npm run dev                          # API: http://localhost:3000
 ```
 
-Kiểm tra: `GET http://localhost:3000/healthz` trả `{"status":"ok"}`, `GET /readyz` trả `ready` khi DB và hàng đợi chạy.
+```bash
+cd web
+npm install
+npm run dev                          # Giao diện: http://localhost:5173
+```
 
-Postgres của Docker dùng cổng **5433** (không phải 5432) để khỏi đụng PostgreSQL cài sẵn trên máy.
+Chế độ demo (`DEMO_MODE=true`) có đồng hồ tua, bảng giả lập tin nhắn và nút vào nhanh với hai tài khoản mẫu, **chỉ nghe `127.0.0.1` và không chạy ở production**. Kịch bản 8 phút: [doc/KICH-BAN-DEMO-MVP.md](doc/KICH-BAN-DEMO-MVP.md), cách chạy: [doc/CHAY-DEMO.md](doc/CHAY-DEMO.md).
 
-### Cấu hình (`.env`)
+```bash
+cd backend && npm test               # Vitest, cần Postgres đang chạy
+cd web && npm test
+```
 
-| Biến | Bắt buộc | Ý nghĩa |
+## Triển khai
+
+Một `Dockerfile` ở gốc dựng cả API lẫn giao diện (`web/dist` do backend phục vụ).
+
+| Hướng | Phù hợp | Hướng dẫn |
 |---|---|---|
-| `FB_APP_ID` | có | App ID của Meta App (Settings > Basic) |
-| `APP_SECRET` | có | App Secret. Kiểm tra chữ ký webhook, đổi code lấy token, tính `appsecret_proof`. **Bí mật.** |
-| `VERIFY_TOKEN` | có | Chuỗi tự đặt, khai báo lại trong Meta App khi đăng ký webhook |
-| `TOKEN_ENC_KEY` | có | Khóa AES-256-GCM, base64 chuẩn của đúng 32 byte. Sinh: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Mất khóa thì không giải mã được token đã lưu.** |
-| `PUBLIC_BASE_URL` | có | Địa chỉ công khai HTTPS của server (địa chỉ tunnel khi dev), không có `/` ở cuối |
-| `DATABASE_URL` | có | Chuỗi kết nối PostgreSQL |
-| `GRAPH_API_VERSION` | có | Phiên bản Graph API, ví dụ `v26.0` |
-| `PORT` | không | Mặc định 3000 |
-| `PAGE_INBOX_APP_IDS` | không | `app_id` của Page Inbox, cách nhau bằng dấu phẩy. Mặc định chấp nhận cả `263902037430900` và `26390203743090` (tài liệu Meta và thực tế lệch nhau, chưa xác minh) |
-| `TRUST_PROXY` | không | `true` khi chạy sau tunnel, proxy hoặc load balancer (để lấy IP thật cho giới hạn tốc độ). Mặc định `false`. |
-| `FB_LOGIN_CONFIG_ID` | không | ID cấu hình Facebook Login for Business, nếu app của bạn cần thay cho `scope` |
-| `TEST_DATABASE_URL` | không | Database cho test; tên PHẢI kết thúc bằng `_test` |
+| **Render + Neon** | Nhanh, không cần thẻ quốc tế, URL cố định (gói free tự ngủ khi nhàn rỗi) | [doc/DEPLOY-RENDER.md](doc/DEPLOY-RENDER.md) |
+| **VM + Caddy** | Chạy 24/7, HTTPS tự động | [doc/DEPLOY-ORACLE.md](doc/DEPLOY-ORACLE.md) |
 
-## Kết nối Page và nhận tin
+Bản công khai luôn `DEMO_MODE=false`, tài khoản tạo bằng CLI, và cần Meta App thật để nhận tin. Chọn **Language: Docker** và để **Root Directory trống** khi tạo service trên Render.
 
-Meta chỉ gọi được địa chỉ HTTPS công khai, nên khi dev cần tunnel (ngrok hoặc cloudflared). Hướng dẫn từng bước cùng bảng lỗi thường gặp: **[doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md)**. Tóm tắt:
+## Trạng thái
 
-1. Khai báo trong Meta App: Valid OAuth Redirect URI `PUBLIC_BASE_URL/auth/facebook/callback`, Webhook URL `PUBLIC_BASE_URL/webhook` với `VERIFY_TOKEN`, và **Subscribe 7 field ở cấp App**: `messages`, `message_echoes`, `message_reactions`, `messaging_postbacks`, `messaging_referrals`, `standby`, `messaging_policy_enforcement` (thiếu `message_echoes` thì tin nhân viên gõ ở Page Inbox không vào DB).
-2. `npm run cli -- tenant:create "Tên doanh nghiệp"` in một liên kết dùng một lần (hết hạn sau 10 phút).
-3. Người quản lý Page mở liên kết bằng trình duyệt, đăng nhập Facebook, cấp quyền. Hệ thống lưu Page và đăng ký webhook.
-
-Cần các quyền: `pages_show_list`, `pages_manage_metadata`, `pages_messaging`, `pages_read_engagement`. Muốn nhận tin từ **khách thật** (không có vai trò trong app) cần Advanced Access qua App Review của Meta; ở chế độ Development chỉ nhận tin từ admin, developer, tester của app.
-
-## Lệnh CLI
-
-```bash
-npm run cli -- <lệnh>
-```
-
-| Lệnh | Việc làm |
+| Hạng mục | Trạng thái |
 |---|---|
-| `tenant:create <tên>` | Tạo doanh nghiệp và in liên kết kết nối Page |
-| `tenant:connect-url <id>` | Liên kết kết nối mới cho tenant đã có |
-| `tenant:list` | Liệt kê tenant và số Page |
-| `backfill [<fbPageId>] [--force]` | Xếp việc lấy lại tin cũ (server xử lý). Bỏ qua Page đang có backfill chạy dở, trừ khi `--force` |
-| `backfill:status` | Tiến độ backfill từng Page và độ sâu hàng đợi |
-| `pages:resubscribe [<fbPageId>]` | Đăng ký lại webhook theo danh sách field hiện hành cho Page đã kết nối (cần khi danh sách field đổi) |
-| `queue:status` | Độ sâu mọi hàng đợi và cảnh báo; thoát mã 2 nếu có vấn đề |
-| `queue:redrive <webhook\|backfill> [--limit N] [--dry-run]` | Đưa job trong dead-letter về hàng đợi gốc |
+| Module 1: tiếp nhận tin (mốc 0–6) | Mã và test tự động xong. **Mốc 4 (kết nối Page) và mốc 5 (backfill) chờ thử với Page Facebook thật.** |
+| Module 2: AI trích xuất | Service, CLI, giao diện duyệt xong; chạy `offline` và có bộ test Claude thật không giao diện |
+| Giao diện | Trang chủ, Hội thoại, Hộp đề xuất, Bảng Giả lập, quản lý Page |
+| Tài khoản và nhiều doanh nghiệp | Xong (P1–P3) |
+| Đơn hàng, thanh toán, đọc bill | Xong ở chế độ demo |
+| Gửi email xác minh | Chưa có (chưa có SMTP); tài khoản tạo bằng CLI |
 
-**Backfill chỉ phục hồi tối đa 20 tin gần nhất mỗi hội thoại** (giới hạn của Meta) và không lấy tin chỉ có ảnh (ảnh vẫn vào qua webhook). Đây không phải khôi phục toàn bộ lịch sử.
+Điều **chưa kiểm chứng với Meta thật** (đơn vị `timestamp` webhook, `id` tin Conversations API có trùng `mid`, hành vi chế độ Development) được liệt kê trong [PROGRESS.md](PROGRESS.md). Dự án không khẳng định "xong" khi chưa có test hoặc kết quả chạy làm bằng chứng.
 
-## Endpoint
-
-| Endpoint | Việc |
-|---|---|
-| `GET /healthz` | Liveness: tiến trình còn sống (không phụ thuộc DB) |
-| `GET /readyz` | Readiness: DB và hàng đợi sẵn sàng; 503 nếu không (chỉ nêu tên thành phần lỗi) |
-| `GET /webhook` | Meta xác minh webhook (`hub.challenge`) |
-| `POST /webhook` | Meta gửi tin; sai chữ ký trả 403 |
-| `GET /auth/facebook/start` và `/callback` | Luồng Facebook Login, giới hạn 30 yêu cầu mỗi phút mỗi IP |
-
-Mọi phản hồi có header `x-request-id` (cũng có trong log dưới tên `reqId`) để đối chiếu một request với log.
-
-## Vận hành
-
-- **Log:** JSON (pino). Không ghi query string, token, nội dung tin, PSID hay chữ ký. Có thêm redact phòng thủ cho các trường nhạy cảm.
-- **Hàng đợi:** server ghi log độ sâu hàng đợi mỗi phút; cảnh báo (mức `warn`) khi dead-letter có job, có job lỗi, hoặc job chờ quá 5 phút (worker có thể đang tắc).
-- **Dead-letter** giữ nguyên payload (gồm nội dung tin) **14 ngày** rồi mất. Khi thấy cảnh báo: sửa nguyên nhân (ví dụ kết nối Page còn thiếu), rồi `npm run cli -- queue:redrive webhook`. Dùng `--dry-run` để xem trước.
-- **Tắt server** bằng `SIGTERM` hoặc `SIGINT`: ngừng nhận request, chờ job đang chạy xong, đóng kết nối. Đã kiểm tra trên Linux (Node 26): thoát mã 0 sau chưa tới 1 giây.
-- **Chạy cả hệ thống bằng Docker:** `Dockerfile` ở gốc (multi-stage: build `web/`, build backend, chạy) tạo một image chứa cả API lẫn giao diện. Sao chép `backend/.env.docker.example` thành `backend/.env.docker` (không commit), điền rồi `docker compose --profile app up -d --build`; mở http://127.0.0.1:3000. Container tự migrate rồi mới chạy server, `NODE_ENV=production` (nên `DEMO_MODE` phải `false`; thư xác minh email chưa gửi được vì chưa có SMTP). Chưa có reverse proxy HTTPS: tạm dùng tunnel. Đã kiểm tra: build, migrate, `/healthz`, đăng ký, đăng nhập, tắt nhẹ nhàng (1 giây, mã 0). Chưa thử trên máy chủ thật.
-- **Chạy trong container:** phải để `node` là PID 1 (`CMD ["node", "dist/server.js"]`, hoặc `exec node ...` trong shell). Nếu bọc bằng `sh -c "... && node ..."` thì `sh` không chuyển `SIGTERM` cho `node` và container không tắt nhẹ nhàng.
-- **Migration:** chạy trước khi khởi động bản mới; server không tự chạy migration. Khi dev: `npm run db:migrate`. Trong môi trường production (không có devDependencies): `npm run build` rồi `npm run db:migrate:prod` (cần thư mục `drizzle/` cạnh `dist/`).
-- **Bản production:** `npm run build` rồi `npm start` (hoặc `node dist/server.js`). Đặt `NODE_ENV=production`. Đã thử build, khởi động và `/readyz` trên máy dev.
-
-## Kiểm thử
-
-```bash
-docker compose up -d      # ở gốc repo; test cần PostgreSQL
-cd backend
-npm test                  # Vitest: unit, tích hợp với Postgres và pg-boss thật
-npm run typecheck
-```
-
-Test dùng database `salesmind_test` (tự tạo, và dựng lại schema sạch mỗi lần chạy, nên tên database phải kết thúc bằng `_test`). Test không gọi Meta thật; lời gọi Graph API được thay bằng `fetch` giả.
-
-## Cấu trúc
+## Cấu trúc kho mã
 
 ```
-backend/
-  src/
-    app.ts, server.ts     dựng Fastify, logging, request id; điểm khởi động và tắt nhẹ nhàng
-    config/env.ts         đọc và kiểm tra .env (zod)
-    webhook/              GET/POST /webhook
-    meta/                 chữ ký, parse payload, Graph client, làm sạch dữ liệu
-    workers/              xử lý webhook, lưu tin (dùng chung với backfill)
-    backfill/             job liệt kê hội thoại và job từng hội thoại
-    auth/                 Facebook Login: state dùng một lần, lưu Page, route, tenant
-    queue/                pg-boss: hàng đợi, worker, quản trị (redrive), monitor
-    db/                   schema Drizzle, client, migrate
-    crypto/               AES-256-GCM cho Page token
-    cli/                  lệnh quản trị
-  drizzle/                migration SQL
-  tests/                  Vitest
-  scripts/                công cụ đánh giá trích xuất
-web/                      giao diện demo (Vite, React)
-doc/                      kế hoạch, hướng dẫn kiểm tra với Page thật, đề án gốc
-docker/, docker-compose.yml   Postgres dev
+backend/        API Fastify: src/, tests/, drizzle/ (migration), scripts/
+web/            giao diện React (Vite)
+doc/            kế hoạch, hướng dẫn kết nối Page, kịch bản demo, triển khai
+deploy/, docker-compose.prod.yml   triển khai VM
+docker/, docker-compose.yml        Postgres dev
 ```
 
-## Giới hạn và rủi ro đã biết
+## Tài liệu
 
-- **Chưa thử với Meta thật.** Đơn vị `timestamp` của webhook (giả định mili giây), cấu trúc payload thật của tin có ảnh, và `id` tin của Conversations API có trùng `mid` của webhook không đều là điểm chưa xác minh. Danh sách đầy đủ trong [PROGRESS.md](PROGRESS.md).
-- Dead-letter không có cảnh báo ngoài log. Hết 14 ngày mà chưa xử lý thì tin mất.
-- Chưa biết Business Suite và app Pages trên điện thoại có tạo echo không và `app_id` của chúng (chỉ Page Inbox được tài liệu nhắc); xem [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md) mục C1.
-- Chưa có đăng nhập người dùng: luồng kết nối Page được bảo vệ bằng liên kết dùng một lần do quản trị viên tạo qua CLI.
-- `npm audit` báo 4 cảnh báo mức vừa của `esbuild` cũ bên trong `drizzle-kit` (chỉ dev, không vào production).
-
-## Tài liệu khác
-
-- [CLAUDE.md](CLAUDE.md): quy tắc kỹ thuật và quy trình làm việc theo mốc
+- [doc/VAN-HANH.md](doc/VAN-HANH.md): cấu hình `.env`, CLI, endpoint, vận hành, kiểm thử, cấu trúc mã chi tiết
+- [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md): kết nối và kiểm tra với Page Facebook thật
+- [doc/KICH-BAN-DEMO-MVP.md](doc/KICH-BAN-DEMO-MVP.md) và [doc/CHAY-DEMO.md](doc/CHAY-DEMO.md): kịch bản và cách chạy demo
+- [doc/PLAN-module2.md](doc/PLAN-module2.md), [doc/PLAN-san-pham.md](doc/PLAN-san-pham.md): kế hoạch Module 2 và sản phẩm
+- [doc/DEPLOY-RENDER.md](doc/DEPLOY-RENDER.md), [doc/DEPLOY-ORACLE.md](doc/DEPLOY-ORACLE.md): triển khai
 - [PROGRESS.md](PROGRESS.md): trạng thái từng mốc, bằng chứng, điểm Meta API đã và chưa xác minh
-- [doc/PLAN-module1.md](doc/PLAN-module1.md): kế hoạch Module 1
-- [doc/PLAN-sua-module1-theo-bao-cao.md](doc/PLAN-sua-module1-theo-bao-cao.md): các thay đổi Module 1 theo báo cáo nghiên cứu (echo, tương tác, standby, chính sách)
-- [doc/KET-NOI-PAGE.md](doc/KET-NOI-PAGE.md): kiểm tra với Page thật
-- [doc/CHAY-DEMO.md](doc/CHAY-DEMO.md): chạy demo MVP (`DEMO_MODE`, AI offline, đồng hồ demo)
+- [CLAUDE.md](CLAUDE.md): quy tắc kỹ thuật và quy trình làm việc theo mốc
