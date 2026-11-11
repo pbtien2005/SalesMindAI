@@ -1,11 +1,11 @@
 # Kịch bản demo MVP SalesMind AI
 
-Bản nháp chờ duyệt, ngày 2026-11-09. Căn cứ: luồng nghiệp vụ trong `doc/salesmind (4).drawio`, đề án `.docx` (tình huống nội thất, phạm vi MVP), `doc/PLAN-module2.md`.
-Thời lượng: khoảng 8 phút 30 giây. Chưa có gì trong kịch bản này được xây, trừ phần tiếp nhận tin của Module 1 (xem mục 8).
+Cập nhật 2026-11-11 theo bản đã xây (bản nháp gốc ngày 2026-11-09). Căn cứ: luồng nghiệp vụ trong `doc/salesmind (4).drawio`, đề án `.docx` (tình huống nội thất, phạm vi MVP), `doc/PLAN-module2.md`.
+Thời lượng: khoảng 8 phút 30 giây. Mọi cảnh đã xây và chạy được bằng kịch bản Chrome `web/e2e/run.mjs` (xem mục 8); phần nối với Facebook thật chưa kiểm chứng.
 
 ## 1. Ba điều khán giả phải nhớ
 
-1. **Mọi thứ AI trích đều có câu gốc.** Rê chuột vào một dòng thì thấy đúng câu của khách, đoạn khớp tô vàng.
+1. **Mọi thứ AI trích đều có câu gốc.** Câu gốc hiện sẵn dưới mỗi giá trị (không cần rê chuột, để dùng được trên màn cảm ứng và bàn phím), đoạn khớp tô vàng trong chat.
 2. **AI không tự đoán ngày.** "Cuối tuần này" hiện cờ hỏi lại, Sale chọn ngày.
 3. **AI đề xuất, Sale quyết định ở chỗ có hậu quả:** ngừng bám, tin gửi khách, xác nhận cọc, tạo đơn. Còn thông tin nhẹ (sản phẩm, ngân sách, tên) thì AI tự điền và gắn nhãn "chưa duyệt".
 
@@ -86,16 +86,17 @@ Tài liệu giả cần chuẩn bị: một ảnh bill chuyển khoản **tự d
 |---|---|---|---|
 | Khách | **"Anh xem ảnh thấy ổn rồi, lấy 1 bộ Sofa Milan xám mã SF-021, giá 12 triệu như em báo nhé. Chốt luôn."** | Huy hiệu **Tín hiệu chốt đơn** trên hội thoại, căn cứ "Chốt luôn" | |
 | AI | Tự chạy | Hộp đề xuất, 2 mục. **(1) Đơn nháp:** Tên nhận hàng *Minh* · SĐT *0912 345 678* · Địa chỉ ***Thiếu*** · Mẫu đã hỏi *sofa phòng khách, màu xám* · Mã hàng *SF-021* · Số lượng *1 bộ* · Giá *12.000.000 ₫* · Thanh toán *Chờ thanh toán* · Trạng thái đơn *Nháp*. **(2) Tin nháp:** "Dạ em xác nhận đơn: 1 bộ Sofa Milan xám (SF-021), 12.000.000 ₫. Anh vui lòng cọc 50% = 6.000.000 ₫ để em giữ hàng ạ. Thông tin chuyển khoản: [số tài khoản demo]." Dòng chú ý: "AI chỉ điền nháp, Sale phải kiểm tra lại" | "AI soạn sẵn đơn và tin xác nhận, nhưng chưa gửi gì cho khách." |
-| Lan | Đọc, sửa một chữ trong tin nháp, bấm **Sao chép**, dán vào Page Inbox và gửi | Tin Page hiện trong chat. Đơn: **Chờ cọc 6.000.000 ₫**. Lịch nhắc thêm: "Nếu khách chưa cọc sau 1 ngày, nhắc Lan" | "Gửi tin là việc của Lan." |
+| Lan | Đọc, sửa một chữ trong tin nháp ngay tại ô, bấm **Gửi** (demo: gửi giả lập, ghi rõ "Demo: tin chưa gửi tới Facebook"; tenant thật: gửi qua Messenger) | Tin hiện trong chat với nhãn **SalesMind**. Đơn: **Chờ cọc 6.000.000 ₫**. Việc "Nhắc khách cọc" hạn +24 giờ. Lịch nhắc thêm: "Nếu khách chưa cọc sau 1 ngày, nhắc Lan" | "Gửi tin là việc của Lan." |
 
 ### Cảnh 5. Cọc bằng bill (1:30), 10:10
 
 | Ai | Thao tác | Hệ thống hiện | Lời dẫn |
 |---|---|---|---|
 | Khách | Gửi ảnh bill đã chuẩn bị, kèm **"Anh chuyển cọc rồi nhé"** | Ảnh bill hiện trong chat | |
-| AI | Tự chạy | Hộp đề xuất, thẻ **Bill**: ảnh thu nhỏ, vùng số tiền được khoanh, "**6.000.000 ₫**", nội dung "Minh coc SF-021". Dòng so sánh: "**6.000.000 / 12.000.000 = 50%, đạt ngưỡng ≥ 50%**". Gợi ý: "**Đã cọc đủ điều kiện**". Ghi chú: "AI chỉ đọc số tiền, trạng thái thanh toán do Sale xác nhận" | "AI đọc bill, nhưng không biết tiền đã thật sự về tài khoản chưa." |
-| Lan | Nói to "em kiểm tra app ngân hàng của shop", bấm **Xác nhận đã cọc (1-Touch)** | Thanh toán: **Đã cọc 6.000.000 ₫, còn lại 6.000.000 ₫**. Hiện đề xuất **Tạo đơn** đã điền sẵn, ô Địa chỉ vẫn *Thiếu* | "Người xác nhận tiền, một cú chạm." |
+| AI | Tự chạy | Hộp đề xuất, thẻ **Bill**: ảnh thu nhỏ, vùng số tiền được khoanh, "**6.000.000 ₫**", nội dung "Minh coc SF-021". Dòng so sánh: "**6.000.000 ₫ / 12.000.000 ₫ = 50%, đạt ngưỡng ≥ 50%**". Ghi chú: "AI chỉ đọc số tiền, trạng thái thanh toán do Sale xác nhận" | "AI đọc bill, nhưng không biết tiền đã thật sự về tài khoản chưa." |
+| Lan | Nói to "em kiểm tra app ngân hàng của shop", bấm **Xác nhận đã cọc** | Thanh toán: **Đã cọc 6.000.000 ₫, còn lại 6.000.000 ₫**. Hiện đề xuất **Tạo đơn** đã điền sẵn, ô Địa chỉ vẫn *Thiếu* | "Người xác nhận tiền, một cú chạm." |
 | Lan | Gõ địa chỉ "12 Nguyễn Trãi, Hà Đông, Hà Nội" (địa chỉ giả), bấm **Xác nhận tạo đơn** | Thông báo "Đã tạo đơn #DH-0001". Màn Đơn hàng và Thanh toán: dòng đơn *Minh · SF-021 ×1 · 12.000.000 ₫ · Đã cọc 6.000.000 ₫ · Còn 6.000.000 ₫ · Đã xác nhận* | "Từ tin nhắn đầu tiên tới đơn hàng có cọc, Lan chỉ bấm vài lần." |
+| Lan | Bấm **Gửi** ở tin nháp "báo đã nhận cọc" (xin thêm địa chỉ nếu cần) | Tin hiện trong chat. Anh Minh không còn là khách chờ trả lời (không thành P1 thứ hai) | "Trả lời khách là việc của Lan, AI chỉ soạn sẵn." |
 
 ### Cảnh 6. Quản lý xem kết quả (1:00), 10:30
 
@@ -110,8 +111,8 @@ Người dẫn quay lại ba điều ở mục 1, nói một câu mỗi điều.
 
 ## 6. Hai biến thể, dùng khi còn thời gian hoặc bị hỏi
 
-- **Bill dưới ngưỡng (cảnh 5):** bill 3.000.000 ₫ (25%) thì thẻ Bill ghi "**dưới 50%**" và đề xuất "Nhắc khách chuyển nốt". Không có gợi ý xác nhận.
-- **AI điền sai (cảnh 1):** chủ động gửi một tin có số gây hiểu lầm. Lan bấm vào dòng sai, sửa, nhãn chuyển thành **Đã sửa bởi Lan**. Con số "Sale sửa vì sai" ở Trang chủ tăng lên 1.
+- **Bill dưới ngưỡng (cảnh 5):** bill 3.000.000 ₫ (25%) thì thẻ Bill ghi "**dưới 50%**". Lan bấm **Bỏ qua** thì có tin nháp "nhắc chuyển nốt" (Lan vẫn phải bấm Gửi). Không có chữ nào nói đã đủ cọc.
+- **AI điền sai (cảnh 1):** chủ động gửi một tin có số gây hiểu lầm. Lan bấm **Sửa** ở dòng sai, nhập giá trị đúng, nhãn chuyển thành **Đã sửa và duyệt bởi Lan**. Con số "Sale sửa vì sai" ở Trang chủ tăng lên 1.
 
 ## 7. Phân tầng AI trong demo
 
@@ -122,20 +123,19 @@ Người dẫn quay lại ba điều ở mục 1, nói một câu mỗi điều.
 
 Quy tắc không đổi so với CLAUDE.md: dữ liệu chưa duyệt chỉ nằm ở `proposals` trạng thái `pending`, không vào `profile_fields`. Dữ liệu chưa duyệt chỉ chuyển thành đã duyệt khi Sale chủ động sửa hoặc bấm xác nhận, không tự động theo thời gian.
 
-## 8. Cái gì đã có, cái gì phải xây
+## 8. Trạng thái xây dựng (2026-11-11)
 
 | Phần | Trạng thái |
 |---|---|
-| Nhận tin qua webhook, lưu cả tin Page gửi (echo), đồng hồ "chờ khách trả lời" | **Có code** (Module 1). Echo chưa thử với Meta thật |
-| Trích xuất kèm câu gốc, đề xuất `pending`, cờ ngày mơ hồ, kiểm tra SĐT | **Có kế hoạch**, chưa code (Module 2, mốc 2 đến 7) |
-| Hộp đề xuất, thẻ khách, nhãn "chưa duyệt", màn Chat, Trang chủ, Đơn hàng | **Chưa có** (giao diện chưa có trong kế hoạch nào) |
-| Bộ đếm bám và đề xuất ngừng bám, reset đếm | **Chưa có** |
-| Mốc chăm sóc lại, lịch nhắc, nhắc sau 1 ngày chưa cọc | **Chưa có** |
-| Nhận diện tín hiệu chốt đơn, đơn nháp, tin nháp | **Chưa có** |
-| Đọc ảnh bill, so sánh ngưỡng 50% | **Chưa có**, cần mô hình đọc ảnh |
-| Bảng đơn hàng và công nợ | **Chưa có** |
-| Đồng hồ demo có thể tua, nút đổi vai, dữ liệu nền | **Chưa có** |
-| Gửi tin cho khách | **Không làm**: Lan sao chép sang Page Inbox |
+| Nhận tin qua webhook, lưu cả tin Page gửi (echo), đồng hồ "chờ khách trả lời" | **Có**, test với Graph giả. Chưa thử với Meta thật (xem `doc/KET-NOI-PAGE.md`) |
+| Trích xuất kèm câu gốc, đề xuất `pending`, cờ ngày mơ hồ, kiểm tra SĐT | **Có**. Bộ trích offline (luật) đạt 12/12 ca đánh giá; **chưa chạy với Claude thật** (cần `ANTHROPIC_API_KEY`) |
+| Hộp đề xuất, thẻ khách, nhãn "chưa duyệt", màn Hội thoại, Trang chủ, Đơn hàng, Việc quá hạn, Lịch sử duyệt | **Có** (`web/`) |
+| Bộ đếm bám, đề xuất ngừng bám, lịch nhắc, nhắc cọc sau 24 giờ | **Có** (tính khi đọc từ dữ liệu và `now`) |
+| Tín hiệu chốt đơn, đơn nháp, tin nháp | **Có** (mẫu cố định, không do mô hình viết) |
+| Đọc ảnh bill, so ngưỡng cọc | **Có**: `AnthropicBillReader` (Claude vision, chỉ thử với fetch giả) và bộ đọc mô phỏng (tra bảng SHA-256 của 2 ảnh mẫu, giao diện ghi rõ) |
+| Bảng đơn hàng và công nợ | **Có** |
+| Đồng hồ demo tua được, đổi vai, dữ liệu nền | **Có** |
+| Gửi tin cho khách | **Có**: nút Gửi. Demo ghi giả lập; tenant thật gửi qua Send API (chưa thử với Meta thật) |
 
 ## 9. Rủi ro và phương án dự phòng
 

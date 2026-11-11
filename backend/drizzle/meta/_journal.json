@@ -78,6 +78,13 @@
       "when": 1794335782938,
       "tag": "0010_typical_lily_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794358664108,
+      "tag": "0011_bouncy_klaw",
+      "breakpoints": true
     }
   ]
 }

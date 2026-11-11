@@ -1,3 +1,4 @@
+import { firstImageUrl } from '../bills/read.js';
 import { and, between, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { conversations, messages, pagePolicyEvents } from '../db/schema.js';
@@ -236,11 +237,11 @@ export async function storeInbound(
         })),
       )
       .onConflictDoNothing({ target: messages.mid })
-      .returning({ id: messages.id, conversationId: messages.conversationId, direction: messages.direction, text: messages.text });
+      .returning({ id: messages.id, conversationId: messages.conversationId, direction: messages.direction, text: messages.text, attachments: messages.attachments });
     result.stored += inserted.length;
     result.duplicates += part.length - inserted.length;
     for (const r of inserted) {
-      if (r.direction === 'inbound' && r.text !== null && r.text.trim() !== '') triggers.add(r.conversationId);
+      if (r.direction === 'inbound' && ((r.text !== null && r.text.trim() !== '') || firstImageUrl(r.attachments) !== null)) triggers.add(r.conversationId); // ảnh của khách (bill) cũng xếp việc: worker đọc bill
     }
   }
   result.customerTextConversationIds = [...triggers];

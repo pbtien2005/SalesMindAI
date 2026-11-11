@@ -13,7 +13,9 @@ import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { conversations, extractionRuns, messages, profileFields, proposals, tenants } from '../db/schema.js';
 import { checkAndReserve, recordUsage, releaseReservation, tenantCap } from '../ai/budget.js';
+import { buildOrderDraft } from '../orders/draft.js';
 import { findPhones } from './phone.js';
+import { findSkus } from './sku.js';
 import { PROMPT_VERSION } from './prompt.js';
 import { classifyTime, needsClarification } from './time-expr.js';
 import {
@@ -87,6 +89,9 @@ export function buildProposal(c: Candidate, customerById: Map<string, ExtractorM
         flags: needsClarification(kind) ? [NEEDS_CLARIFICATION] : [],
       };
     }
+    case 'unit_price':
+      if (!/\d/u.test(evidence.map((e) => e.text).join(' '))) return null;
+      return { field: 'unit_price', value: { text: value }, evidence, flags: [] };
     case 'budget':
       if (!/\d|triệu|nghìn|ngàn|tỷ|tỉ|trăm/iu.test(evidence.map((e) => e.text).join(' '))) return null;
       return { field: 'budget', value: { text: value }, evidence, flags: [] };
@@ -115,6 +120,17 @@ export function buildPhoneProposal(customerMsgs: ExtractorMessage[]): Built | nu
         flags: [],
       };
     }
+  }
+  return null;
+}
+
+/** Mã hàng trích bằng code từ tin khách: lấy mã của tin mới nhất có mã. */
+export function buildSkuProposal(customerMsgs: ExtractorMessage[]): Built | null {
+  for (let i = customerMsgs.length - 1; i >= 0; i--) {
+    const m = customerMsgs[i]!;
+    const skus = findSkus(m.text);
+    const s = skus[skus.length - 1];
+    if (s) return { field: 'sku', value: { text: s.value }, evidence: [{ messageId: m.id, start: s.start, end: s.end, text: s.text }], flags: [] };
   }
   return null;
 }
@@ -194,6 +210,8 @@ export async function runExtraction(deps: RunDeps, conversationId: string): Prom
   // SĐT do code trích: có dù mô hình lỗi.
   const phone = buildPhoneProposal(customerMsgs);
   if (phone) built.push(phone);
+  const sku = buildSkuProposal(customerMsgs);
+  if (sku) built.push(sku);
 
   const usage = outcome.usage ?? ZERO_USAGE;
   const status = failureReason ? 'failed' : 'succeeded';
@@ -258,6 +276,14 @@ export async function runExtraction(deps: RunDeps, conversationId: string): Prom
   });
 
   if (proposed === null) return { status: 'skipped', reason: 'already_done' };
+  // Đơn nháp (cảnh 4): ngoài giao dịch trích xuất, lỗi không làm hỏng run (chỉ ghi log).
+  if (status === 'succeeded') {
+    try {
+      await buildOrderDraft(db, conv.tenantId, conversationId);
+    } catch (e) {
+      log.warn({ extraction: { conversationId, orderDraftError: e instanceof Error ? e.name : 'error' } }, 'không dựng được đơn nháp');
+    }
+  }
   log.info(
     { extraction: { conversationId, status, proposed, rejected, failureReason: failureReason ?? null, model: extractor.model, ...usage } },
     'đã trích xuất hội thoại',

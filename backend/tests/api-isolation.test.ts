@@ -10,7 +10,7 @@ import { MemoryMailer } from '../src/auth/mailer.js';
 import { createUser } from '../src/auth/users.js';
 import { createInvite } from '../src/auth/invites.js';
 import { createTokenCrypto } from '../src/crypto/token-crypto.js';
-import { conversations, extractionRuns, messages, pages, proposals, tasks, tenants } from '../src/db/schema.js';
+import { conversations, extractionRuns, messages, orders, pages, payments, proposals, replyDrafts, tasks, tenants } from '../src/db/schema.js';
 import { advanceClock } from '../src/demo/clock.js';
 import { resetDemo } from '../src/demo/seed.js';
 import { openTestDb, truncateAll } from './helpers/test-db.js';
@@ -41,6 +41,9 @@ interface Tenant {
   userId: string;
   inviteId: string;
   pageId: string;
+  orderId: string;
+  draftId: string;
+  paymentId: string;
   cookie: string;
   name: string;
 }
@@ -68,10 +71,13 @@ async function seedTenant(name: string, email: string): Promise<Tenant> {
     .insert(proposals)
     .values({ tenantId, conversationId: c!.id, runId: run!.id, field: 'phone', value: { text: '0912345678' }, evidence: [] })
     .returning({ id: proposals.id });
+  const [ord] = await db.insert(orders).values({ tenantId, conversationId: c!.id, status: 'awaiting_deposit', sku: 'SF-021', productName: 'Sofa', unitPriceVnd: 12_000_000, totalVnd: 12_000_000, depositRequiredVnd: 6_000_000, depositPaidVnd: 6_000_000 }).returning({ id: orders.id });
+  const [dr] = await db.insert(replyDrafts).values({ tenantId, conversationId: c!.id, orderId: ord!.id, kind: 'top_up', text: 'Nhắc chuyển nốt' }).returning({ id: replyDrafts.id });
+  const [pay] = await db.insert(payments).values({ tenantId, conversationId: c!.id, orderId: ord!.id, messageId: m!.id, readOk: true, amountVnd: 6_000_000, readModel: 'test' }).returning({ id: payments.id });
   await db.insert(tasks).values({ tenantId, conversationId: c!.id, title: `Việc của ${name}`, dueAt: new Date('2026-11-01T00:00:00Z') });
   const login = await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { email, password: PASSWORD } });
   const cookie = String(([] as string[]).concat(login.headers['set-cookie'] as string | string[])[0]).split(';')[0]!;
-  return { tenantId, conversationId: c!.id, proposalId: pr!.id, userId, inviteId: inv.id, pageId: p!.id, cookie, name };
+  return { tenantId, conversationId: c!.id, proposalId: pr!.id, userId, inviteId: inv.id, pageId: p!.id, orderId: ord!.id, draftId: dr!.id, paymentId: pay!.id, cookie, name };
 }
 
 let A: Tenant;
@@ -106,10 +112,15 @@ const CASES: Record<string, (b: Tenant) => { method: Method; url: string; body?:
   'POST /api/conversations/:id/send': (b) => ({ method: 'POST', url: `/api/conversations/${b.conversationId}/send`, body: { text: 'xin chào' } }),
   'POST /api/pages/:id/disconnect': (b) => ({ method: 'POST', url: `/api/pages/${b.pageId}/disconnect` }),
   'POST /api/pages/:id/backfill': (b) => ({ method: 'POST', url: `/api/pages/${b.pageId}/backfill` }),
+  'POST /api/orders/:id/update': (b) => ({ method: 'POST', url: `/api/orders/${b.orderId}/update`, body: { address: '12 Lê Lợi' } }),
+  'POST /api/orders/:id/confirm': (b) => ({ method: 'POST', url: `/api/orders/${b.orderId}/confirm`, body: { address: '12 Lê Lợi, Quận 1' } }),
+  'POST /api/reply-drafts/:id/send': (b) => ({ method: 'POST', url: `/api/reply-drafts/${b.draftId}/send`, body: {} }),
+  'POST /api/payments/:id/confirm': (b) => ({ method: 'POST', url: `/api/payments/${b.paymentId}/confirm`, body: {} }),
+  'POST /api/payments/:id/reject': (b) => ({ method: 'POST', url: `/api/payments/${b.paymentId}/reject`, body: {} }),
   'POST /api/proposals/:id/decide': (b) => ({ method: 'POST', url: `/api/proposals/${b.proposalId}/decide`, body: { action: 'dismiss' } }),
 };
 
-const TABLES = ['conversations', 'messages', 'proposals', 'profile_fields', 'tasks', 'followup_state', 'extraction_runs', 'users', 'memberships', 'tenants', 'invitations'];
+const TABLES = ['orders', 'payments', 'reply_drafts', 'conversations', 'messages', 'proposals', 'profile_fields', 'tasks', 'followup_state', 'extraction_runs', 'users', 'memberships', 'tenants', 'invitations'];
 async function snapshot() {
   const out: Record<string, unknown> = {};
   for (const t of TABLES) out[t] = (await db.execute(sql.raw(`SELECT md5(coalesce(string_agg(x::text, ',' ORDER BY x::text), '')) AS h FROM "${t}" x`))).rows[0];
@@ -149,6 +160,15 @@ describe('cách ly dữ liệu giữa hai doanh nghiệp', () => {
       expect(body, url).not.toContain('Khách của B');
       expect(body, url).not.toContain('Việc của B');
     }
+  });
+
+  it('danh sách đơn và chi tiết hội thoại chỉ có đơn của chính doanh nghiệp', async () => {
+    const list = (await as(A, 'GET', '/api/orders')).json().orders as Array<{ id: string }>;
+    expect(list.map((o) => o.id)).toEqual([A.orderId]);
+    const detail = (await as(A, 'GET', `/api/conversations/${A.conversationId}`)).json();
+    expect(detail.order.id).toBe(A.orderId);
+    expect(detail.payments.map((p: { id: string }) => p.id)).toEqual([A.paymentId]);
+    expect(JSON.stringify(detail)).not.toContain(B.orderId);
   });
 
   it('id không phải UUID cũng 404, không phải 400 (không phân biệt "sai dạng" với "của người khác")', async () => {

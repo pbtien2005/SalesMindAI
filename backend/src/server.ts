@@ -6,6 +6,9 @@ import { loadEnv } from './config/env.js';
 import { createTokenCrypto } from './crypto/token-crypto.js';
 import { createDb } from './db/client.js';
 import { GraphClient } from './meta/graph-client.js';
+import { createBillReader } from './bills/factory.js';
+import { readPendingBills } from './bills/read.js';
+import { fileURLToPath } from 'node:url';
 import { fillCustomerNames } from './meta/profiles.js';
 import { handleBackfillConversation, handleBackfillPage, type BackfillDeps } from './backfill/backfill.js';
 import { createExtractor } from './extraction/factory.js';
@@ -68,7 +71,7 @@ const app = buildApp(
       session: { idleDays: env.SESSION_IDLE_DAYS, maxDays: env.SESSION_MAX_DAYS },
     },
     // API demo chỉ tồn tại khi DEMO_MODE=true (không có đăng nhập).
-    api: { db: dbHandle.db, crypto, demoMode: env.DEMO_MODE, ai: { mode: env.AI_MODE, defaultCap: env.AI_DAILY_CAP }, sender: new GraphMessageSender({ db: dbHandle.db, crypto, graph, ownAppId: env.FB_APP_ID }), facebook: { facebookConfigured: !/^changeme/i.test(env.FB_APP_ID) && !/^changeme/i.test(env.APP_SECRET), graph, backfill: createBackfillQueue(boss) }, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } },
+    api: { db: dbHandle.db, crypto, demoMode: env.DEMO_MODE, ai: { mode: env.AI_MODE, defaultCap: env.AI_DAILY_CAP }, ownAppId: env.FB_APP_ID, sender: new GraphMessageSender({ db: dbHandle.db, crypto, graph, ownAppId: env.FB_APP_ID }), facebook: { facebookConfigured: !/^changeme/i.test(env.FB_APP_ID) && !/^changeme/i.test(env.APP_SECRET), graph, backfill: createBackfillQueue(boss) }, log: { info: (o: object, m?: string) => app.log.info(o, m), warn: (o: object, m?: string) => app.log.warn(o, m) } },
   },
 );
 
@@ -115,6 +118,7 @@ try {
 // AI trích xuất (Module 2). `AI_MODE=offline` là mặc định: luật tất định, không gọi mạng.
 const extractor = createExtractor(env);
 const extractQueue = createExtractQueue(boss);
+const billReader = createBillReader(env);
 app.log.info({ aiMode: env.AI_MODE, model: extractor.model, debounceSeconds: env.AI_DEBOUNCE_SECONDS }, 'AI trích xuất');
 if (env.AI_MODE === 'live') {
   app.log.warn('AI_MODE=live: nội dung chat của tenant đã bật AI được gửi tới API Anthropic (nước ngoài). Chỉ dùng sau khi kiểm tra pháp lý.');
@@ -133,6 +137,8 @@ await startWebhookWorker(boss, async (data) => {
 });
 
 await startExtractWorker(boss, async ({ conversationId }) => {
+  // Ảnh bill của khách (nếu có) được đọc cùng lượt: cùng hàng đợi, retry và dead-letter với trích xuất.
+  await readPendingBills({ db: dbHandle.db, reader: billReader, assetDir: env.BILL_ASSET_DIR ?? fileURLToPath(new URL('../demo-assets', import.meta.url)), demoMode: env.DEMO_MODE, log: app.log, ...(env.AI_MODE === 'live' ? { budget: { defaultCap: env.AI_DAILY_CAP } } : {}) }, conversationId, new Date());
   await runExtraction({ db: dbHandle.db, extractor, log: app.log, contextMessages: env.AI_CONTEXT_MESSAGES, ...(env.AI_MODE === 'live' ? { budget: { defaultCap: env.AI_DAILY_CAP } } : {}) }, conversationId);
 });
 stopSweeper = startSweeper({ db: dbHandle.db, queue: extractQueue, log: app.log, delaySeconds: env.AI_DEBOUNCE_SECONDS });

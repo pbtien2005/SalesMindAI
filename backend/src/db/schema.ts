@@ -42,6 +42,8 @@ export const proposalField = pgEnum('proposal_field', [
   'timeline',
   'intent',
   'message_purpose',
+  'sku',
+  'unit_price',
 ]);
 /** `pending` chờ Sale; `accepted` duyệt nguyên văn; `edited` Sale sửa rồi duyệt; `dismissed` bỏ qua; `superseded` bị đề xuất mới thay. */
 export const proposalStatus = pgEnum('proposal_status', ['pending', 'accepted', 'edited', 'dismissed', 'superseded']);
@@ -58,6 +60,12 @@ export const tenants = pgTable('tenants', {
   aiConsentBy: uuid('ai_consent_by'),
   /** Hạn mức lời gọi AI mỗi ngày (giờ Việt Nam); null = dùng mặc định của máy chủ (AI_DAILY_CAP). */
   aiDailyCap: integer('ai_daily_cap'),
+  /** Phần trăm tổng đơn khách phải cọc (đơn nháp tính `deposit_required_vnd` từ đây). */
+  depositPercent: integer('deposit_percent').notNull().default(50),
+  /** Hướng dẫn chuyển khoản chèn vào tin nháp xác nhận đơn. */
+  paymentInstructions: text('payment_instructions'),
+  /** Số thứ tự đơn kế tiếp; chỉ tăng qua `confirmOrder` (UPDATE ... RETURNING). */
+  nextOrderNo: integer('next_order_no').notNull().default(1),
   createdAt: createdAt(),
 });
 
@@ -165,6 +173,7 @@ export const messages = pgTable(
       columns: [t.conversationId, t.pageId, t.tenantId],
       foreignColumns: [conversations.id, conversations.pageId, conversations.tenantId],
     }),
+    unique('messages_id_tenant_unique').on(t.id, t.tenantId),
     index('messages_conversation_sent_at_idx').on(t.conversationId, t.sentAt),
     index('messages_tenant_sent_at_idx').on(t.tenantId, t.sentAt),
   ],
@@ -520,3 +529,111 @@ export type Message = typeof messages.$inferSelect;
 export type PagePolicyEvent = typeof pagePolicyEvents.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type MemberRole = (typeof memberRole.enumValues)[number];
+
+/* ---- Đơn hàng, thanh toán, tin nháp (cảnh 4–5). Dòng do AI tạo chỉ ở `draft` / `proposed` tới khi Sale xác nhận. ---- */
+
+export const orderStatus = pgEnum('order_status', ['draft', 'awaiting_deposit', 'confirmed', 'cancelled']);
+export const paymentStatus = pgEnum('payment_status', ['proposed', 'confirmed', 'rejected']);
+export const replyDraftKind = pgEnum('reply_draft_kind', ['confirm_order', 'top_up', 'deposit_received']);
+export const replyDraftStatus = pgEnum('reply_draft_status', ['pending', 'sent', 'dismissed']);
+
+export const products = pgTable(
+  'products',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+    sku: text('sku').notNull(),
+    name: text('name').notNull(),
+    priceVnd: bigint('price_vnd', { mode: 'number' }).notNull(),
+  },
+  (t) => [unique('products_tenant_sku_unique').on(t.tenantId, t.sku)],
+);
+
+export const orders = pgTable(
+  'orders',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id').notNull(),
+    conversationId: uuid('conversation_id').notNull(),
+    /** `DH-0001`...: chỉ có khi đơn đã xác nhận. */
+    code: text('code'),
+    status: orderStatus('status').notNull().default('draft'),
+    customerName: text('customer_name'),
+    phone: text('phone'),
+    address: text('address'),
+    sku: text('sku').notNull(),
+    productName: text('product_name').notNull(),
+    quantity: integer('quantity').notNull().default(1),
+    unitPriceVnd: bigint('unit_price_vnd', { mode: 'number' }).notNull(),
+    totalVnd: bigint('total_vnd', { mode: 'number' }).notNull(),
+    depositRequiredVnd: bigint('deposit_required_vnd', { mode: 'number' }).notNull(),
+    depositPaidVnd: bigint('deposit_paid_vnd', { mode: 'number' }).notNull().default(0),
+    flags: text('flags').array().notNull().default(sql`'{}'::text[]`),
+    saleEditedAt: timestamp('sale_edited_at', { withTimezone: true }),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    confirmedBy: text('confirmed_by'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('orders_id_tenant_unique').on(t.id, t.tenantId),
+    unique('orders_tenant_code_unique').on(t.tenantId, t.code),
+    // Mỗi hội thoại chỉ một đơn đang mở.
+    uniqueIndex('orders_one_open_per_conversation').on(t.conversationId).where(sql`${t.status} in ('draft', 'awaiting_deposit')`),
+    foreignKey({ name: 'orders_conversation_tenant_fk', columns: [t.conversationId, t.tenantId], foreignColumns: [conversations.id, conversations.tenantId] }),
+    index('orders_tenant_created_idx').on(t.tenantId, t.createdAt),
+  ],
+);
+
+export const payments = pgTable(
+  'payments',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id').notNull(),
+    conversationId: uuid('conversation_id').notNull(),
+    orderId: uuid('order_id'),
+    messageId: uuid('message_id').notNull().unique(),
+    status: paymentStatus('status').notNull().default('proposed'),
+    /** Bộ đọc bill đọc được số tiền hay không. */
+    readOk: boolean('read_ok').notNull(),
+    amountVnd: bigint('amount_vnd', { mode: 'number' }),
+    transferNote: text('transfer_note'),
+    billTime: text('bill_time'),
+    bbox: jsonb('bbox'),
+    readModel: text('read_model').notNull(),
+    amountEdited: boolean('amount_edited').notNull().default(false),
+    confirmedBy: text('confirmed_by'),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('payments_id_tenant_unique').on(t.id, t.tenantId),
+    foreignKey({ name: 'payments_conversation_tenant_fk', columns: [t.conversationId, t.tenantId], foreignColumns: [conversations.id, conversations.tenantId] }),
+    foreignKey({ name: 'payments_order_tenant_fk', columns: [t.orderId, t.tenantId], foreignColumns: [orders.id, orders.tenantId] }),
+    foreignKey({ name: 'payments_message_tenant_fk', columns: [t.messageId, t.tenantId], foreignColumns: [messages.id, messages.tenantId] }),
+    index('payments_tenant_confirmed_idx').on(t.tenantId, t.confirmedAt),
+  ],
+);
+
+export const replyDrafts = pgTable(
+  'reply_drafts',
+  {
+    id: id(),
+    tenantId: uuid('tenant_id').notNull(),
+    conversationId: uuid('conversation_id').notNull(),
+    orderId: uuid('order_id').notNull(),
+    kind: replyDraftKind('kind').notNull(),
+    text: text('text').notNull(),
+    status: replyDraftStatus('status').notNull().default('pending'),
+    decidedBy: text('decided_by'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('reply_drafts_id_tenant_unique').on(t.id, t.tenantId),
+    foreignKey({ name: 'reply_drafts_conversation_tenant_fk', columns: [t.conversationId, t.tenantId], foreignColumns: [conversations.id, conversations.tenantId] }),
+    foreignKey({ name: 'reply_drafts_order_tenant_fk', columns: [t.orderId, t.tenantId], foreignColumns: [orders.id, orders.tenantId] }),
+    // Một tin nháp đang chờ cho mỗi (đơn, loại).
+    uniqueIndex('reply_drafts_one_pending').on(t.orderId, t.kind).where(sql`${t.status} = 'pending'`),
+  ],
+);

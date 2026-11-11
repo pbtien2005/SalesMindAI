@@ -42,6 +42,24 @@ const COLOR = /màu\s+\p{L}+/iu;
 
 const BUDGET = /(?:(tầm\s+khoảng|tầm|khoảng|cỡ|dưới|trên|ngân\s+sách(?:\s+là)?)\s*)?(\d+(?:[.,]\d+)?)\s*(triệu|tr|củ|nghìn|ngàn|k|tỷ|tỉ)(?![\p{L}])/iu;
 
+/** Số tiền đứng ngay sau chữ "giá" là GIÁ cửa hàng báo, không phải ngân sách của khách. */
+const PRICE_QUOTED = /(?:với\s+)?giá\s*(?:là\s*)?(\d+(?:[.,]\d+)?)\s*(triệu|tr|củ|nghìn|ngàn|k|tỷ|tỉ)(?![\p{L}])/iu;
+
+/** Khớp ngân sách mới nhất, bỏ qua số tiền đứng ngay sau chữ "giá". */
+function lastBudget(msgs: ExtractorMessage[]): { msg: ExtractorMessage; m: RegExpExecArray } | null {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const msg = msgs[i]!;
+    const re = new RegExp(BUDGET.source, 'giu');
+    let found: RegExpExecArray | null = null;
+    for (let m = re.exec(msg.text); m; m = re.exec(msg.text)) {
+      if (/giá\s*(?:là\s*)?$/iu.test(msg.text.slice(0, m.index))) continue;
+      found = m;
+    }
+    if (found) return { msg, m: found };
+  }
+  return null;
+}
+
 const TIME_PATTERNS = [
   /\d{1,2}\s*\/\s*\d{1,2}(?:\s*\/\s*\d{2,4})?/u,
   /(?:cuối|đầu|giữa)\s+tuần(?:\s+(?:này|sau|tới))?/iu,
@@ -68,7 +86,9 @@ const QUANTITY =/(\d+|một|hai|ba|bốn)\s*(bộ|cái|chiếc)/iu;
 const ADDRESS = /(?:địa\s+chỉ(?:\s+nhận\s+hàng)?(?:\s+là)?|giao\s+(?:về|tới|đến))\s*[:\-]?\s*([^.\n]{6,100})/iu;
 
 const PURPOSE_RULES: Array<{ purpose: string; intent: string; pattern: RegExp }> = [
-  { purpose: 'buy_intent', intent: 'ready_to_buy', pattern: /chốt(?:\s+(?:luôn|đơn|nhé))?|đặt\s+hàng|mua\s+luôn|lấy\s+(?:luôn|\d+\s*bộ|một\s+bộ)/iu },
+  // "Chốt luôn" là câu rõ nhất để làm căn cứ chốt đơn: thử trước các cách nói khác.
+  { purpose: 'buy_intent', intent: 'ready_to_buy', pattern: /chốt(?:\s+(?:luôn|đơn|nhé))?/iu },
+  { purpose: 'buy_intent', intent: 'ready_to_buy', pattern: /đặt\s+hàng|mua\s+luôn|lấy\s+(?:luôn|\d+\s*bộ|một\s+bộ)/iu },
   { purpose: 'ask_payment', intent: 'ready_to_buy', pattern: /chuyển\s+khoản|thanh\s+toán|trả\s+tiền|đặt\s+cọc|\bcọc\b|số\s+tài\s+khoản|\bstk\b/iu },
   { purpose: 'schedule_visit', intent: 'interested', pattern: /ghé\s+(?:shop|cửa\s+hàng|xem)?|xem\s+(?:hàng|shop|trực\s+tiếp)|đến\s+(?:shop|cửa\s+hàng)|qua\s+shop/iu },
   { purpose: 'ask_price', intent: 'interested', pattern: /giá|bao\s+nhiêu|nhiêu\s+tiền/iu },
@@ -109,7 +129,7 @@ export class OfflineExtractor implements Extractor {
     }
 
     // Ngân sách.
-    const budget = lastMatch(msgs, [BUDGET]);
+    const budget = lastBudget(msgs);
     if (budget) {
       const [whole, qualifier, num, unit] = budget.m;
       const amount = Math.round(Number(num!.replace(',', '.')) * (MULT[unit!.toLowerCase()] ?? 1));
@@ -117,6 +137,13 @@ export class OfflineExtractor implements Extractor {
       const prefix = qualifier && /dưới/i.test(qualifier) ? 'dưới ' : qualifier && /trên/i.test(qualifier) ? 'trên ' : approx ? '≈ ' : '';
       const note = approx ? ` (khách nói "${qualifier!.toLowerCase().replace(/\s+/g, ' ')}")` : '';
       out.push({ field: 'budget', value: `${prefix}${formatVnd(amount)}${note}`, quotes: [quoteOf(budget.msg, whole!.trim())] });
+    }
+
+    // Đơn giá khách nhắc lại ("giá 12 triệu như em báo"): không phải ngân sách.
+    const priced = lastMatch(msgs, [PRICE_QUOTED]);
+    if (priced) {
+      const amount = Math.round(Number(priced.m[1]!.replace(',', '.')) * (MULT[priced.m[2]!.toLowerCase()] ?? 1));
+      out.push({ field: 'unit_price', value: formatVnd(amount), quotes: [quoteOf(priced.msg, priced.m[0].trim())] });
     }
 
     // Số lượng.

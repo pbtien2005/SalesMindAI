@@ -11,17 +11,21 @@ export const ALL_FIELDS = [
   'timeline',
   'intent',
   'message_purpose',
+  'sku',
+  'unit_price',
 ] as const;
 export type ProposalFieldName = (typeof ALL_FIELDS)[number];
 
 /** Trường do mô hình trích. SĐT KHÔNG nằm trong đây: SĐT trích bằng code (`phone.ts`). */
-export const MODEL_FIELDS = ['customer_name', 'address', 'product_interest', 'quantity', 'budget', 'timeline', 'intent', 'message_purpose'] as const;
+export const MODEL_FIELDS = ['customer_name', 'address', 'product_interest', 'quantity', 'budget', 'timeline', 'intent', 'message_purpose', 'unit_price'] as const;
 export type ModelField = (typeof MODEL_FIELDS)[number];
 
 /** Giao diện tự điền, hiện thẳng trên thẻ khách với nhãn "AI điền, chưa duyệt". */
 export const LIGHT_FIELDS: readonly ProposalFieldName[] = ['customer_name', 'product_interest', 'budget', 'quantity'];
 /** Phải qua Hộp đề xuất: Sale duyệt, sửa hoặc bỏ qua. */
 export const REVIEW_FIELDS: readonly ProposalFieldName[] = ['phone', 'timeline', 'address'];
+/** Đầu vào của đơn nháp (mã hàng, đơn giá khách nhắc): không hiện trên thẻ khách, không vào Hộp đề xuất. */
+export const ORDER_FIELDS: readonly ProposalFieldName[] = ['sku', 'unit_price'];
 /** Tín hiệu nội bộ (tính P1), không hiện cho Sale như một mục cần duyệt. */
 export const SIGNAL_FIELDS: readonly ProposalFieldName[] = ['intent', 'message_purpose'];
 

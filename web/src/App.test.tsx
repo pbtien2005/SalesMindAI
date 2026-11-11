@@ -56,7 +56,7 @@ function server(over: Partial<{ home: HomeData; conversations: unknown[] }> = {}
 }
 
 describe('Trang chủ (cảnh 0)', () => {
-  it('hiện bốn thẻ: P1, quá hạn, lịch nhắc và tiền cọc "Sắp có"', async () => {
+  it('hiện bốn thẻ: P1, quá hạn, lịch nhắc và tiền cọc hôm nay', async () => {
     server();
     renderApp(<App />);
     expect(await screen.findByRole('heading', { name: 'Trang chủ của Lan' })).toBeTruthy();
@@ -67,7 +67,7 @@ describe('Trang chủ (cảnh 0)', () => {
     expect(within(main).getByText('Anh Đức, Chị Ngọc')).toBeTruthy();
     expect(within(main).getByText('Lịch nhắc sắp tới').nextElementSibling?.textContent).toBe('2');
     expect(within(main).getByText('1 việc sắp đến hạn, 1 khách đang được bám')).toBeTruthy();
-    expect(within(main).getByText('Sắp có')).toBeTruthy();
+    expect(within(main).getByText('Tiền cọc hôm nay').nextElementSibling?.textContent).toBe('0 ₫');
   });
 
   it('danh sách nhắc: quá hạn tính theo ngày lịch, bám, sắp tới', async () => {
@@ -267,5 +267,29 @@ describe('Việc quá hạn và lịch sử duyệt (cảnh 6)', () => {
     const history = await screen.findByRole('region', { name: 'Lịch sử duyệt' });
     expect(await within(history).findByText(/AI đề xuất Ngân sách: ≈ 15.000.000 ₫ · đã duyệt/)).toBeTruthy();
     expect(within(history).getByText(/bởi Lan/)).toBeTruthy();
+  });
+});
+
+describe('Tiền cọc hôm nay và màn Đơn hàng (cảnh 6)', () => {
+  it('Trang chủ hiện số tiền cọc đã xác nhận; bấm thẻ mở màn Đơn hàng với đúng số liệu', async () => {
+    server({ home: { ...HOME, depositToday: 6_000_000 } }, (url) => {
+      if (url === '/api/orders')
+        return json({
+          orders: [{ id: 'o1', conversationId: 'minh', code: 'DH-0001', status: 'confirmed', customerName: 'Anh Minh', productName: 'Sofa Milan xám', sku: 'SF-021', quantity: 1, totalVnd: 12_000_000, depositPaidVnd: 6_000_000, remainingVnd: 6_000_000, createdAt: '2026-11-13T03:20:00.000Z' }],
+        });
+      return undefined;
+    });
+    const user = userEvent.setup();
+    renderApp(<App />);
+    const card = await screen.findByRole('button', { name: /Tiền cọc hôm nay: 6\.000\.000/ });
+    expect(within(card).getByText('6.000.000 ₫')).toBeTruthy();
+    await user.click(card);
+    const table = await screen.findByRole('table', { name: 'Danh sách đơn hàng' });
+    const row = within(table).getByText('#DH-0001').closest('tr')!;
+    expect(within(row).getByText('Anh Minh')).toBeTruthy();
+    expect(within(row).getByText('1 × Sofa Milan xám (SF-021)')).toBeTruthy();
+    expect(within(row).getAllByText('6.000.000 ₫')).toHaveLength(2); // đã cọc và còn lại
+    expect(within(row).getByText('12.000.000 ₫')).toBeTruthy();
+    expect(within(row).getByText('Đã tạo')).toBeTruthy();
   });
 });

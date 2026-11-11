@@ -47,6 +47,10 @@ export interface ConversationSummary {
   isP1: boolean;
   /** Khách nhắn nhưng Page chưa từng trả lời. */
   isNew: boolean;
+  stage?: 'new' | 'chasing' | 'tracking';
+  nextContact?: { at: string; reason: string } | null;
+  /** Câu gốc báo khách chốt mua. */
+  closeSignal?: { text: string; messageId: string } | null;
 }
 
 export type ReminderKind = 'overdue' | 'followup' | 'upcoming';
@@ -81,6 +85,8 @@ export interface HomeData {
   reminders: Reminder[];
   suggestStop: ConversationSummary[];
   ai: AiStats;
+  /** Tổng tiền cọc đã xác nhận hôm nay (VND). */
+  depositToday?: number;
   role: Role;
 }
 
@@ -142,6 +148,67 @@ export interface ConversationDetail {
   autoFill: ProposalView[];
   box: BoxItem[];
   tasks: Array<{ id: string; title: string; dueAt: string; source: string }>;
+  order?: OrderView | null;
+  replyDrafts?: ReplyDraftView[];
+  payments?: PaymentView[];
+}
+
+export interface OrderView {
+  id: string;
+  code: string | null;
+  status: 'draft' | 'awaiting_deposit' | 'confirmed' | 'cancelled';
+  customerName: string | null;
+  phone: string | null;
+  address: string | null;
+  sku: string;
+  productName: string;
+  quantity: number;
+  unitPriceVnd: number;
+  totalVnd: number;
+  depositRequiredVnd: number;
+  depositPaidVnd: number;
+  flags: string[];
+  saleEdited: boolean;
+}
+
+export interface ReplyDraftView {
+  id: string;
+  orderId: string;
+  kind: 'confirm_order' | 'top_up' | 'deposit_received';
+  text: string;
+}
+
+export interface PaymentView {
+  id: string;
+  messageId: string;
+  status: 'proposed' | 'confirmed' | 'rejected';
+  readOk: boolean;
+  amountVnd: number | null;
+  transferNote: string | null;
+  billTime: string | null;
+  bbox: { x: number; y: number; w: number; h: number } | null;
+  simulatedReader: boolean;
+  amountEdited: boolean;
+  confirmedBy: string | null;
+  verdict: 'ok' | 'below' | null;
+  ratioPercent: number | null;
+  thresholdPercent: number | null;
+  orderTotalVnd: number | null;
+}
+
+export interface OrderRow {
+  id: string;
+  conversationId: string;
+  code: string | null;
+  status: OrderView['status'];
+  customerName: string;
+  productName: string;
+  sku: string;
+  quantity: number;
+  totalVnd: number;
+  depositPaidVnd: number;
+  remainingVnd: number;
+  createdAt: string;
 }
 
 export interface HistoryEntry {

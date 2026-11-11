@@ -9,16 +9,20 @@ import { z } from 'zod';
 import type { Db } from '../db/client.js';
 import { conversations, pages } from '../db/schema.js';
 import type { TokenCrypto } from '../crypto/token-crypto.js';
-import { SimError, simulateCustomerMessage, simulatePageMessage } from '../demo/actions.js';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { DEMO_IMAGE_FILES, SimError, simulateCustomerImage, simulateCustomerMessage, simulatePageMessage } from '../demo/actions.js';
 import { advanceClock, advanceClockTo } from '../demo/clock.js';
 import { type DemoContext, getDemoContext, resetDemo } from '../demo/seed.js';
 import { PERSONAS, type WebhookPoster } from '../demo/simulator.js';
 import { decideProposal, ProposalError } from '../extraction/proposals.js';
 import { FollowupError, stopFollowup } from '../followup/followup.js';
-import { loadHome } from '../followup/overview.js';
+import { loadHome, loadOrders } from '../followup/overview.js';
 import { loadInboxPage } from '../followup/inbox.js';
 import { apiError as err, makeRequireAuth, type AuthGuardOptions } from './guard.js';
 import { loadConversationDetail, loadHistory } from './read-models.js';
+import { OrderError, sendReplyDraft, updateDraftOrder, type SendReply } from '../orders/service.js';
+import { confirmDeposit, confirmOrder, rejectPayment } from '../orders/payments.js';
 import { nowFor } from './scope.js';
 import { teamRoutes } from './team.js';
 import { aiRoutes } from './ai.js';
@@ -42,6 +46,10 @@ export interface ApiOptions {
   publicBaseUrl: string;
   /** Gửi tin thật qua Send API (không có thì route gửi trả 503). */
   sender?: MessageSender;
+  /** `FB_APP_ID`: tin gửi từ SalesMind mang app_id này nên hiện là "SalesMind" (page_app). */
+  ownAppId?: string;
+  /** Thư mục ảnh demo (`demo-assets/`). Mặc định: cạnh `src/` (hoặc `dist/`). */
+  assetDir?: string;
   /** Chế độ AI và hạn mức mặc định (hiển thị ở màn AI). */
   ai?: { mode: 'offline' | 'live'; defaultCap: number };
   /** Kết nối Page Facebook (chưa cấu hình thì các route kết nối trả 503). */
@@ -187,6 +195,83 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
     }
   });
 
+  // ---- Đơn nháp và tin nháp (cảnh 4–5). AI chỉ tạo nháp; mọi chuyển trạng thái do Sale bấm. ----
+  const ORDER_STATUS: Record<string, number> = { not_found: 404, not_pending: 409, not_draft: 409, invalid: 422, deposit_not_reached: 422, address_required: 422 };
+  const orderErr = (e: unknown, reply: FastifyReply) => {
+    if (e instanceof OrderError) return err(reply, ORDER_STATUS[e.code] ?? 422, e.code, e.message);
+    if (e instanceof SendError) return err(reply, SEND_STATUS[e.code] ?? 502, e.code, e.message);
+    if (e instanceof SimError) return err(reply, 422, 'invalid', e.message);
+    throw e;
+  };
+  /** Gửi qua đúng đường của tenant: demo ghi giả lập (không tới Messenger), tenant thật dùng Send API. */
+  const sendFor = (a: { tenantId: string; userId: string }): SendReply => async (conversationId, text, now) => {
+    if (opts.demoMode && (await isDemoTenant(db, a.tenantId))) {
+      const ctx = await getDemoContext(db);
+      if (!ctx) throw new SendError('page_inactive', 'Chưa có dữ liệu demo.');
+      await simulatePageMessage({ db, poster: opts.poster, appSecret: opts.appSecret, ctx }, conversationId, text, now, opts.ownAppId);
+      return;
+    }
+    if (!opts.sender) throw new SendError('page_inactive', 'Chưa cấu hình gửi tin.');
+    await opts.sender.send({ tenantId: a.tenantId, conversationId, text, byUserId: a.userId }, now);
+  };
+  const patchBody = z.object({ address: z.string().max(300).optional(), quantity: z.number().int().optional(), customerName: z.string().max(300).optional(), phone: z.string().max(50).optional() });
+  app.post<{ Params: { id: string } }>('/api/orders/:id/update', async (req, reply) => {
+    const a = req.auth!;
+    const b = patchBody.safeParse(req.body);
+    if (!uuid.safeParse(req.params.id).success) return err(reply, 404, 'not_found', 'Không có đơn này.');
+    if (!b.success) return err(reply, 422, 'invalid', 'Dữ liệu sửa đơn không hợp lệ.');
+    try {
+      await updateDraftOrder(db, { tenantId: a.tenantId, orderId: req.params.id, by: a.displayName, patch: b.data }, await nowOf(a.tenantId));
+      return { ok: true };
+    } catch (e) {
+      return orderErr(e, reply);
+    }
+  });
+  app.post<{ Params: { id: string } }>('/api/payments/:id/confirm', async (req, reply) => {
+    const a = req.auth!;
+    const b = z.object({ amountVnd: z.number().int().optional() }).safeParse(req.body ?? {});
+    if (!uuid.safeParse(req.params.id).success) return err(reply, 404, 'not_found', 'Không có khoản thanh toán này.');
+    if (!b.success) return err(reply, 422, 'invalid', 'Số tiền không hợp lệ.');
+    try {
+      return { ok: true, ...(await confirmDeposit(db, { tenantId: a.tenantId, paymentId: req.params.id, by: a.displayName, amountVnd: b.data.amountVnd }, await nowOf(a.tenantId))) };
+    } catch (e) {
+      return orderErr(e, reply);
+    }
+  });
+  app.post<{ Params: { id: string } }>('/api/payments/:id/reject', async (req, reply) => {
+    const a = req.auth!;
+    if (!uuid.safeParse(req.params.id).success) return err(reply, 404, 'not_found', 'Không có khoản thanh toán này.');
+    try {
+      return { ok: true, ...(await rejectPayment(db, { tenantId: a.tenantId, paymentId: req.params.id, by: a.displayName }, await nowOf(a.tenantId))) };
+    } catch (e) {
+      return orderErr(e, reply);
+    }
+  });
+  app.post<{ Params: { id: string } }>('/api/orders/:id/confirm', async (req, reply) => {
+    const a = req.auth!;
+    const b = z.object({ address: z.string().max(500) }).safeParse(req.body);
+    if (!uuid.safeParse(req.params.id).success) return err(reply, 404, 'not_found', 'Không có đơn này.');
+    if (!b.success) return err(reply, 422, 'address_required', 'Thiếu địa chỉ nhận hàng.');
+    try {
+      return { ok: true, ...(await confirmOrder(db, { tenantId: a.tenantId, orderId: req.params.id, by: a.displayName, address: b.data.address }, await nowOf(a.tenantId))) };
+    } catch (e) {
+      return orderErr(e, reply);
+    }
+  });
+  app.get('/api/orders', async (req) => ({ orders: await loadOrders(db, req.auth!.tenantId) }));
+  app.post<{ Params: { id: string } }>('/api/reply-drafts/:id/send', async (req, reply) => {
+    const a = req.auth!;
+    const b = z.object({ text: z.string().max(5000).optional() }).safeParse(req.body ?? {});
+    if (!uuid.safeParse(req.params.id).success) return err(reply, 404, 'not_found', 'Không có tin nháp này.');
+    if (!b.success) return err(reply, 422, 'invalid', 'Nội dung không hợp lệ.');
+    try {
+      const r = await sendReplyDraft({ db, send: sendFor(a) }, { tenantId: a.tenantId, replyDraftId: req.params.id, by: a.displayName, text: b.data.text }, await nowOf(a.tenantId));
+      return { ok: true, ...r };
+    } catch (e) {
+      return orderErr(e, reply);
+    }
+  });
+
   if (!opts.demoMode) return;
 
   // ---- Route demo: chỉ DEMO_MODE, chỉ với thành viên của tenant demo. ----
@@ -238,6 +323,31 @@ export const apiRoutes: FastifyPluginAsync<ApiOptions> = async (app: FastifyInst
       if (e instanceof SimError) return err(reply, e.code === 'not_found' ? 404 : 400, e.code, e.message);
       throw e;
     }
+  });
+
+  const imageBody = z.union([z.object({ persona: z.string().min(1), file: z.string() }), z.object({ conversationId: uuid, file: z.string() })]);
+  app.post('/api/demo/customer-image', async (req, reply) => {
+    const ctx = await demoCtx(req, reply);
+    if (!ctx) return reply;
+    const b = imageBody.safeParse(req.body);
+    if (!b.success) return err(reply, 400, 'invalid', b.error.issues.map((i) => i.message).join('; '));
+    try {
+      const target = 'persona' in b.data ? { persona: b.data.persona } : { conversationId: b.data.conversationId };
+      const r = await simulateCustomerImage(sim(ctx), target, b.data.file, await nowOf(ctx.tenantId));
+      return reply.code(202).send({ accepted: true, conversationId: r.conversationId });
+    } catch (e) {
+      if (e instanceof SimError) return err(reply, e.code === 'not_found' ? 404 : 400, e.code, e.message);
+      throw e;
+    }
+  });
+
+  // Ảnh mẫu: danh sách cho phép cố định, không nhận đường dẫn tùy ý (không có :param để khỏi lẫn với id của tenant).
+  const assetDir = opts.assetDir ?? fileURLToPath(new URL('../../demo-assets', import.meta.url));
+  app.get('/api/demo/assets/*', async (req, reply) => {
+    const file = (req.params as { '*': string })['*'];
+    if (!(DEMO_IMAGE_FILES as readonly string[]).includes(file)) return err(reply, 404, 'not_found', 'Không có ảnh này.');
+    const bytes = await readFile(`${assetDir}/${file}`);
+    return reply.header('cache-control', 'no-store').type('image/png').send(bytes);
   });
 
   app.post('/api/demo/page-message', async (req, reply) => {

@@ -7,7 +7,8 @@
  */
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { conversations, followupState, pages, profileFields, proposals, tasks } from '../db/schema.js';
+import { conversations, followupState, orders, pages, payments, profileFields, proposals, replyDrafts, tasks } from '../db/schema.js';
+import { startOfVnDay } from '../util/vn-time.js';
 import { LIGHT_FIELDS, NEEDS_CLARIFICATION, P1_PURPOSES, REVIEW_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
 import { followupStatus, type FollowupStatus } from './followup.js';
 
@@ -31,6 +32,8 @@ export interface ConversationSummary {
   /** `tracking`: có mốc hẹn đã duyệt còn ở tương lai; `new`: chưa có SĐT đã duyệt và chưa bám; còn lại `chasing`. */
   stage: 'new' | 'chasing' | 'tracking';
   nextContact: { at: Date; reason: string } | null;
+  /** Câu gốc báo khách chốt mua (đề xuất `message_purpose = buy_intent` có căn cứ ở tin khách mới nhất). */
+  closeSignal: { text: string; messageId: string } | null;
 }
 
 const minutesBetween = (from: Date, to: Date) => Math.max(0, Math.floor((to.getTime() - from.getTime()) / 60_000));
@@ -83,10 +86,13 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
       ),
     );
   const hasBuySignal = new Set<string>();
+  const closeSignals = new Map<string, { text: string; messageId: string }>();
   for (const s of signalRows) {
     const evidenceMsg = (s.evidence as Evidence[] | null)?.[0]?.messageId;
     if (!evidenceMsg || evidenceMsg !== lastInboundId.get(s.conversationId)) continue;
     const v = (s.value as ProposalValue).text;
+    const ev = (s.evidence as Evidence[])[0]!;
+    if (s.field === 'message_purpose' && v === 'buy_intent') closeSignals.set(s.conversationId, { text: ev.text, messageId: ev.messageId });
     if ((s.field === 'message_purpose' && P1_PURPOSES.includes(v)) || (s.field === 'intent' && v === 'ready_to_buy')) hasBuySignal.add(s.conversationId);
   }
 
@@ -127,6 +133,7 @@ async function summarize(db: Db, tenantId: string, now: Date, convs: Conversatio
         isP1: waitingOn === 'page' && (waitingMinutes ?? 0) > P1_WAIT_MINUTES && hasBuySignal.has(c.id),
         isNew: customerWaiting && c.lastPageMessageAt === null,
         stage: apptAt.has(c.id) ? 'tracking' : !hasPhone.has(c.id) && (followupStatus(times, stoppedAt.get(c.id) ?? null, now).count === 0) ? 'new' : 'chasing',
+        closeSignal: closeSignals.get(c.id) ?? null,
         nextContact: apptAt.has(c.id) ? { at: apptAt.get(c.id)!, reason: 'Ngày hẹn đã xác nhận (ưu tiên 1)' } : null,
       };
     })
@@ -171,6 +178,8 @@ export interface HomeData {
   /** Hội thoại đủ 5/5 bám, chờ Sale xác nhận ngừng. */
   suggestStop: ConversationSummary[];
   ai: AiStats;
+  /** Tổng khoản cọc Sale đã xác nhận trong ngày hôm nay (giờ Việt Nam). */
+  depositToday: number;
 }
 
 export async function loadHome(db: Db, tenantId: string, now: Date): Promise<HomeData> {
@@ -202,12 +211,21 @@ export async function loadHome(db: Db, tenantId: string, now: Date): Promise<Hom
     .select({ field: proposals.field, status: proposals.status, flags: proposals.flags })
     .from(proposals)
     .where(and(eq(proposals.tenantId, tenantId), ne(proposals.status, 'superseded')));
+  const count = async (q: Promise<unknown[]>) => (await q).length;
+  const sentDrafts = await count(db.select({ id: replyDrafts.id }).from(replyDrafts).where(and(eq(replyDrafts.tenantId, tenantId), eq(replyDrafts.status, 'sent'))));
+  const confirmedPayments = await count(db.select({ id: payments.id }).from(payments).where(and(eq(payments.tenantId, tenantId), eq(payments.status, 'confirmed'))));
+  const confirmedOrders = await count(db.select({ id: orders.id }).from(orders).where(and(eq(orders.tenantId, tenantId), eq(orders.status, 'confirmed'))));
+  const dayStart = startOfVnDay(now);
+  const [dep] = await db
+    .select({ total: sql<string>`coalesce(sum(${payments.amountVnd}), 0)` })
+    .from(payments)
+    .where(and(eq(payments.tenantId, tenantId), eq(payments.status, 'confirmed'), sql`${payments.confirmedAt} >= ${dayStart} and ${payments.confirmedAt} < ${new Date(dayStart.getTime() + 24 * 3_600_000)}`));
   const stoppedCount = (await db.select({ id: followupState.conversationId }).from(followupState).where(eq(followupState.tenantId, tenantId))).length;
   const ai: AiStats = {
     autoFilled: rows.filter((r) => LIGHT_FIELDS.includes(r.field) && r.status !== 'dismissed').length,
     saleEdited: rows.filter((r) => r.status === 'edited').length,
     askedDate: rows.filter((r) => r.field === 'timeline' && r.flags.includes(NEEDS_CLARIFICATION)).length,
-    approved: rows.filter((r) => REVIEW_FIELDS.includes(r.field) && (r.status === 'accepted' || r.status === 'edited')).length + stoppedCount,
+    approved: rows.filter((r) => REVIEW_FIELDS.includes(r.field) && (r.status === 'accepted' || r.status === 'edited')).length + stoppedCount + sentDrafts + confirmedPayments + confirmedOrders,
   };
 
   return {
@@ -217,5 +235,46 @@ export async function loadHome(db: Db, tenantId: string, now: Date): Promise<Hom
     reminders,
     suggestStop: summaries.filter((s) => s.followup.suggestStop),
     ai,
+    depositToday: Number(dep?.total ?? 0),
   };
+}
+
+export interface OrderRow {
+  id: string;
+  conversationId: string;
+  code: string | null;
+  status: 'draft' | 'awaiting_deposit' | 'confirmed' | 'cancelled';
+  customerName: string;
+  productName: string;
+  sku: string;
+  quantity: number;
+  totalVnd: number;
+  depositPaidVnd: number;
+  remainingVnd: number;
+  createdAt: Date;
+}
+
+/** Danh sách đơn của doanh nghiệp (mới nhất trước), cho màn Đơn hàng. */
+export async function loadOrders(db: Db, tenantId: string): Promise<OrderRow[]> {
+  const rows = await db
+    .select({ o: orders, display: conversations.displayName, psid: conversations.psid })
+    .from(orders)
+    .innerJoin(conversations, eq(conversations.id, orders.conversationId))
+    .where(eq(orders.tenantId, tenantId))
+    .orderBy(sql`${orders.createdAt} desc`)
+    .limit(500);
+  return rows.map(({ o, display, psid }) => ({
+    id: o.id,
+    conversationId: o.conversationId,
+    code: o.code,
+    status: o.status,
+    customerName: o.customerName ?? display ?? fallbackName(psid),
+    productName: o.productName,
+    sku: o.sku,
+    quantity: o.quantity,
+    totalVnd: o.totalVnd,
+    depositPaidVnd: o.depositPaidVnd,
+    remainingVnd: Math.max(0, o.totalVnd - o.depositPaidVnd),
+    createdAt: o.createdAt,
+  }));
 }

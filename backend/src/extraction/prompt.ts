@@ -1,7 +1,7 @@
 import type { ExtractorInput } from './types.js';
 
 /** Đổi khi sửa prompt hoặc schema: là một phần của khóa idempotency (`extraction_runs`). */
-export const PROMPT_VERSION = 'v1';
+export const PROMPT_VERSION = 'v2';
 
 /**
  * System prompt: cố định (không timestamp, không dữ liệu từng yêu cầu) để prompt caching hoạt động.
@@ -22,7 +22,8 @@ Các trường (field):
 - address: địa chỉ giao hàng khách cung cấp, chép nguyên văn.
 - product_interest: sản phẩm khách quan tâm, ngắn gọn (ví dụ "sofa phòng khách, màu xám"); có thể gồm nhiều quotes từ nhiều tin.
 - quantity: số lượng khách muốn (ví dụ "1 bộ").
-- budget: ngân sách khách nêu, viết rõ bằng chữ (ví dụ "khoảng 15 triệu").
+- budget: ngân sách khách nêu, viết rõ bằng chữ (ví dụ "khoảng 15 triệu"). KHÔNG dùng cho giá của cửa hàng mà khách nhắc lại (ví dụ "giá 12 triệu như em báo"): đó là unit_price, không phải ngân sách.
+- unit_price: đơn giá của sản phẩm mà khách nhắc lại hoặc đồng ý khi chốt mua (ví dụ "12 triệu" trong "giá 12 triệu như em báo"). Chỉ trích khi khách gắn con số với giá của sản phẩm cụ thể.
 - timeline: cụm thời gian khách nêu, chép nguyên văn.
 - intent: một trong browsing (xem tham khảo), interested (quan tâm rõ), ready_to_buy (sẵn sàng mua). Quote là câu thể hiện điều đó.
 - message_purpose: mục đích của tin KHÁCH mới nhất: ask_price (hỏi giá), ask_payment (hỏi cách thanh toán hoặc chuyển khoản), buy_intent (chốt mua), schedule_visit (hẹn xem hàng), provide_contact (cho thông tin liên hệ), other. Quote là câu thể hiện điều đó.

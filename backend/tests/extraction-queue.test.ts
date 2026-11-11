@@ -211,18 +211,21 @@ describe('nối với webhook (afterStore)', () => {
     expect(seen).toEqual([[base.conversationId]]);
   });
 
-  it('tin của Page, tin chỉ có ảnh và tin trùng thì KHÔNG kích hoạt', async () => {
+  it('tin của Page và tin trùng KHÔNG kích hoạt; ảnh của khách có kích hoạt (để đọc bill)', async () => {
     const { seen, opts } = await setup();
     const echo = webhookPayload([messageEvent({ mid: 'e1', text: 'Dạ em chào anh', isEcho: true, appId: '263902037430900', psid: 'PSID_X', pageId: 'PAGE_X' })], 'PAGE_X');
     const photo = webhookPayload([messageEvent({ mid: 'p1', psid: 'PSID_X', pageId: 'PAGE_X', attachments: [{ type: 'image', payload: { url: 'https://x/y.png' } }] })], 'PAGE_X');
     await processWebhookPayload(db, echo, log, opts);
-    await processWebhookPayload(db, photo, log, opts);
     expect(seen).toEqual([]);
+    await processWebhookPayload(db, photo, log, opts);
+    expect(seen).toHaveLength(1); // ảnh của khách xếp việc: worker đọc bill rồi (nếu có chữ) trích xuất
+    await processWebhookPayload(db, photo, log, opts); // Meta gửi lại cùng ảnh: không xếp lại
+    expect(seen).toHaveLength(1);
 
     const text = webhookPayload([messageEvent({ mid: 'm2', text: 'Chào', psid: 'PSID_X', pageId: 'PAGE_X' })], 'PAGE_X');
     await processWebhookPayload(db, text, log, opts);
     await processWebhookPayload(db, text, log, opts); // Meta gửi lại cùng tin
-    expect(seen).toHaveLength(1);
+    expect(seen).toHaveLength(2);
   });
 
   it('afterStore ném lỗi thì webhook VẪN thành công và tin vẫn được lưu', async () => {

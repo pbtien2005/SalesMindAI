@@ -10,8 +10,12 @@ export interface AttachmentView {
 const KNOWN = new Set(['image', 'video', 'audio', 'file']);
 const HOSTS = ['fbcdn.net', 'facebook.com', 'fbsbx.com'];
 
+const DEMO_ASSET = /^\/api\/demo\/assets\/[a-z0-9-]+\.png$/;
+
 export function isAllowedMediaUrl(raw: unknown): raw is string {
   if (typeof raw !== 'string' || raw.length > 4000) return false;
+  // Ảnh mẫu của demo (do chính server phục vụ, chỉ tồn tại khi DEMO_MODE); không phải URL ngoài.
+  if (DEMO_ASSET.test(raw)) return true;
   let u: URL;
   try {
     u = new URL(raw);

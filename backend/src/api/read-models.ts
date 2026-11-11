@@ -4,8 +4,10 @@
  */
 import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { conversations, followupState, pages, messages, profileFields, proposals, tasks } from '../db/schema.js';
-import { LIGHT_FIELDS, REVIEW_FIELDS, SIGNAL_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
+import { conversations, followupState, orders, pages, messages, payments, profileFields, proposals, replyDrafts, tasks, tenants } from '../db/schema.js';
+import { evaluateDeposit } from '../orders/deposit.js';
+import { OFFLINE_BILL_MODEL } from '../bills/offline-bill-reader.js';
+import { LIGHT_FIELDS, ORDER_FIELDS, REVIEW_FIELDS, SIGNAL_FIELDS, type Evidence, type ProposalValue } from '../extraction/types.js';
 import { sendWindow } from '../send/window.js';
 import { toAttachmentViews, type AttachmentView } from '../meta/attachments.js';
 import { loadSummariesFor, type ConversationSummary } from '../followup/overview.js';
@@ -20,6 +22,52 @@ export interface MessageView {
   hasAttachment: boolean;
   attachments: AttachmentView[];
   sentAt: Date;
+}
+
+export interface OrderView {
+  id: string;
+  code: string | null;
+  status: 'draft' | 'awaiting_deposit' | 'confirmed' | 'cancelled';
+  customerName: string | null;
+  phone: string | null;
+  address: string | null;
+  sku: string;
+  productName: string;
+  quantity: number;
+  unitPriceVnd: number;
+  totalVnd: number;
+  depositRequiredVnd: number;
+  depositPaidVnd: number;
+  flags: string[];
+  /** Sale đã sửa nháp. */
+  saleEdited: boolean;
+}
+
+export interface PaymentView {
+  id: string;
+  messageId: string;
+  status: 'proposed' | 'confirmed' | 'rejected';
+  readOk: boolean;
+  amountVnd: number | null;
+  transferNote: string | null;
+  billTime: string | null;
+  bbox: { x: number; y: number; w: number; h: number } | null;
+  /** `true` khi do bộ đọc mô phỏng (không phải AI thật) đọc. */
+  simulatedReader: boolean;
+  amountEdited: boolean;
+  confirmedBy: string | null;
+  /** Tính khi đọc từ số tiền và đơn; không có khi không đọc được hoặc chưa có đơn. */
+  verdict: 'ok' | 'below' | null;
+  ratioPercent: number | null;
+  thresholdPercent: number | null;
+  orderTotalVnd: number | null;
+}
+
+export interface ReplyDraftView {
+  id: string;
+  orderId: string;
+  kind: 'confirm_order' | 'top_up' | 'deposit_received';
+  text: string;
 }
 
 export interface ProposalView {
@@ -57,6 +105,12 @@ export interface ConversationDetail {
   tasks: Array<{ id: string; title: string; dueAt: Date; source: string }>;
   /** Có gửi tin được cho khách này không (cửa sổ 24 giờ và trạng thái Page). */
   reply: { open: boolean; closesAt: Date | null; pageActive: boolean };
+  /** Đơn của hội thoại: đơn đang mở, nếu không thì đơn mới nhất. */
+  order: OrderView | null;
+  /** Tin nháp đang chờ Sale bấm Gửi. */
+  replyDrafts: ReplyDraftView[];
+  /** Khoản chuyển khoản AI đọc từ ảnh bill của khách (Sale xác nhận). */
+  payments: PaymentView[];
 }
 
 const asView = (p: typeof proposals.$inferSelect): ProposalView => ({
@@ -124,11 +178,46 @@ export async function loadConversationDetail(db: Db, tenantId: string, conversat
     .where(and(eq(tasks.conversationId, conversationId), isNull(tasks.doneAt)))
     .orderBy(asc(tasks.dueAt));
 
+  const orderRows = await db.select().from(orders).where(and(eq(orders.conversationId, conversationId), eq(orders.tenantId, tenantId))).orderBy(desc(orders.createdAt));
+  const o = orderRows.find((r) => r.status === 'draft' || r.status === 'awaiting_deposit') ?? orderRows[0];
+  const order: OrderView | null = o
+    ? { id: o.id, code: o.code, status: o.status, customerName: o.customerName, phone: o.phone, address: o.address, sku: o.sku, productName: o.productName, quantity: o.quantity, unitPriceVnd: o.unitPriceVnd, totalVnd: o.totalVnd, depositRequiredVnd: o.depositRequiredVnd, depositPaidVnd: o.depositPaidVnd, flags: o.flags, saleEdited: o.saleEditedAt !== null }
+    : null;
+  const drafts = await db.select().from(replyDrafts).where(and(eq(replyDrafts.conversationId, conversationId), eq(replyDrafts.tenantId, tenantId), eq(replyDrafts.status, 'pending'))).orderBy(asc(replyDrafts.createdAt));
+
+  const [tn] = await db.select({ pct: tenants.depositPercent }).from(tenants).where(eq(tenants.id, tenantId));
+  const payRows = await db.select().from(payments).where(and(eq(payments.conversationId, conversationId), eq(payments.tenantId, tenantId))).orderBy(asc(payments.createdAt));
+  const orderById = new Map(orderRows.map((r) => [r.id, r]));
+  const paymentViews: PaymentView[] = payRows.map((p) => {
+    const ord = (p.orderId ? orderById.get(p.orderId) : undefined) ?? orderRows.find((r) => r.status === 'awaiting_deposit');
+    const ev = p.readOk && p.amountVnd !== null && ord ? evaluateDeposit(p.amountVnd, ord.totalVnd, tn?.pct ?? 50) : null;
+    return {
+      id: p.id,
+      messageId: p.messageId,
+      status: p.status,
+      readOk: p.readOk,
+      amountVnd: p.amountVnd,
+      transferNote: p.transferNote,
+      billTime: p.billTime,
+      bbox: (p.bbox as PaymentView['bbox']) ?? null,
+      simulatedReader: p.readModel === OFFLINE_BILL_MODEL,
+      amountEdited: p.amountEdited,
+      confirmedBy: p.confirmedBy,
+      verdict: ev?.verdict ?? null,
+      ratioPercent: ev?.ratioPercent ?? null,
+      thresholdPercent: ev ? (tn?.pct ?? 50) : null,
+      orderTotalVnd: ord?.totalVnd ?? null,
+    };
+  });
+
   const [pg] = await db.select({ status: pages.status }).from(pages).where(eq(pages.id, conv.pageId));
   const win = sendWindow(conv.lastUserInteractionAt, now);
   return {
     summary,
     reply: { open: win.open, closesAt: win.closesAt, pageActive: pg?.status === 'active' },
+    order,
+    replyDrafts: drafts.map((d) => ({ id: d.id, orderId: d.orderId, kind: d.kind, text: d.text })),
+    payments: paymentViews,
     messages: msgs,
     approved: approvedRows.map((r) => ({
       field: r.field,
@@ -166,7 +255,7 @@ export async function loadHistory(db: Db, tenantId: string, conversationId: stri
     .where(and(eq(proposals.tenantId, tenantId), eq(proposals.conversationId, conversationId), ne(proposals.status, 'superseded')))
     .orderBy(asc(proposals.createdAt));
   const out: HistoryEntry[] = rows
-    .filter((p) => !SIGNAL_FIELDS.includes(p.field))
+    .filter((p) => !SIGNAL_FIELDS.includes(p.field) && !ORDER_FIELDS.includes(p.field))
     .map((p) => ({
       kind: 'proposal' as const,
       field: p.field,

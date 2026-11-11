@@ -130,3 +130,21 @@ describe('classifyTime (chỉ phân loại, không giải ngày)', () => {
     expect(Object.keys(mod).sort()).toEqual(['classifyTime', 'needsClarification']);
   });
 });
+
+import { findSkus } from '../src/extraction/sku.js';
+
+describe('findSkus', () => {
+  it('tìm mã hàng kèm offset đúng; không phân biệt hoa thường, trả về chữ hoa', () => {
+    const text = 'lấy mã SF-021 nhé';
+    const [s] = findSkus(text);
+    expect(s).toMatchObject({ value: 'SF-021', text: 'SF-021' });
+    expect(text.slice(s!.start, s!.end)).toBe('SF-021');
+    expect(findSkus('mã sf-021')[0]!.value).toBe('SF-021');
+  });
+  it('không khớp mã quá ngắn hoặc dính vào chữ khác', () => {
+    expect(findSkus('SF-0')).toEqual([]);
+    expect(findSkus('1SF-021')).toEqual([]);
+    expect(findSkus('SF-02111')).toEqual([]);
+    expect(findSkus('không có mã')).toEqual([]);
+  });
+});

@@ -238,3 +238,25 @@ describe('createExtractor và cấu hình', () => {
     expect(loadEnv({ ...env, DEMO_MODE: 'true' }).DEMO_MODE).toBe(true);
   });
 });
+
+describe('OfflineExtractor: cảnh 4 (chốt đơn)', () => {
+  const SCENE4 = 'Anh xem ảnh thấy ổn rồi, lấy 1 bộ Sofa Milan xám mã SF-021, giá 12 triệu như em báo nhé. Chốt luôn.';
+
+  it('số lượng, đơn giá, mục đích chốt; số tiền sau chữ "giá" KHÔNG phải ngân sách', async () => {
+    const m = msg(SCENE4);
+    const c = await run(m);
+    expect(get(c, 'quantity')!.value).toBe('1 bộ');
+    const price = get(c, 'unit_price')!;
+    expect(price.value).toContain('12.000.000');
+    expect(price.quotes[0]!.quote).toBe('giá 12 triệu');
+    expect(get(c, 'budget')).toBeUndefined();
+    expect(get(c, 'message_purpose')!.value).toBe('buy_intent');
+    expect(get(c, 'message_purpose')!.quotes[0]!.quote.toLowerCase()).toContain('chốt');
+  });
+
+  it('ngân sách thật vẫn được nhận khi cùng tin có cả ngân sách và giá', async () => {
+    const c = await run(msg('Anh có tầm 15 triệu, mẫu giá 12 triệu em báo ok'));
+    expect(get(c, 'budget')!.value).toContain('15.000.000');
+    expect(get(c, 'unit_price')!.value).toContain('12.000.000');
+  });
+});

@@ -4,6 +4,7 @@ import type {
   DecideResult,
   HistoryEntry,
   OverdueTask,
+  OrderRow,
   HomeData,
   ConversationSummary,
   Persona,
@@ -131,5 +132,12 @@ export const api = {
     post<{ accepted: true; conversationId: string }>('/api/demo/customer-message', { ...target, text }),
   send: (conversationId: string, text: string, idempotencyKey: string) =>
     request<{ ok: true; messageId: string }>('POST', `/api/conversations/${encodeURIComponent(conversationId)}/send`, { text }, { 'idempotency-key': idempotencyKey }),
+  orders: () => get<{ orders: OrderRow[] }>('/api/orders'),
+  updateOrder: (id: string, patch: { address?: string; quantity?: number; customerName?: string; phone?: string }) => post<{ ok: true }>(`/api/orders/${encodeURIComponent(id)}/update`, patch),
+  sendReplyDraft: (id: string, text?: string) => post<{ ok: true; orderStatus: string | null }>(`/api/reply-drafts/${encodeURIComponent(id)}/send`, text === undefined ? {} : { text }),
+  confirmPayment: (id: string, amountVnd?: number) => post<{ ok: true; depositPaidVnd: number; depositReached: boolean }>(`/api/payments/${encodeURIComponent(id)}/confirm`, amountVnd === undefined ? {} : { amountVnd }),
+  rejectPayment: (id: string) => post<{ ok: true }>(`/api/payments/${encodeURIComponent(id)}/reject`),
+  confirmOrder: (id: string, address: string) => post<{ ok: true; code: string }>(`/api/orders/${encodeURIComponent(id)}/confirm`, { address }),
+  customerImage: (target: { persona: string } | { conversationId: string }, file: string) => post<{ accepted: true; conversationId: string }>('/api/demo/customer-image', { ...target, file }),
   pageMessage: (conversationId: string, text: string) => post<{ accepted: true }>('/api/demo/page-message', { conversationId, text }),
 };

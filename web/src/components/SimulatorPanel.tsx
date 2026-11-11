@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { useAdvanceClockTo, useCustomerMessage, useInbox, usePageMessage, usePersonas } from '../api/hooks';
+import { useAdvanceClockTo, useCustomerImage, useCustomerMessage, useInbox, usePageMessage, usePersonas } from '../api/hooks';
 import { useSession } from '../state/session';
 import { ErrorBanner } from './ErrorBanner';
 
@@ -8,6 +8,15 @@ const CUSTOMER_SAMPLES = [
   { label: 'Cảnh 1, tin 1', text: 'Chào shop, anh đang tìm sofa phòng khách tầm 15 triệu' },
   { label: 'Cảnh 1, tin 2', text: 'Có mẫu nào màu xám không em?' },
   { label: 'Cảnh 3', text: 'Anh Minh đây, hôm qua bận quá. SĐT anh 0912 345 678. Cuối tuần này anh ghé shop xem được không?' },
+  { label: 'Cảnh 4', text: 'Anh xem ảnh thấy ổn rồi, lấy 1 bộ Sofa Milan xám mã SF-021, giá 12 triệu như em báo nhé. Chốt luôn.' },
+  { label: 'Cảnh 5', text: 'Anh chuyển cọc rồi nhé, em kiểm tra giúp anh.' },
+];
+
+/** Ảnh mẫu khách gửi (bill tự dựng, không phải bill thật). */
+const CUSTOMER_IMAGES = [
+  { label: 'Gửi ảnh bill 6 triệu', file: 'bill-6000000.png' },
+  { label: 'Gửi ảnh bill 3 triệu', file: 'bill-3000000.png' },
+  { label: 'Gửi ảnh sofa (không phải bill)', file: 'sofa.png' },
 ];
 
 const LAN_SAMPLES = [
@@ -23,6 +32,9 @@ const CLOCK_JUMPS = [
   { label: 'Cảnh 1: Thứ Năm 12/11 09:05', to: '2026-11-12T09:05:00+07:00' },
   { label: 'Cảnh 2: Thứ Sáu 13/11 09:30', to: '2026-11-13T09:30:00+07:00' },
   { label: 'Cảnh 3: Thứ Sáu 13/11 09:40', to: '2026-11-13T09:40:00+07:00' },
+  { label: 'Cảnh 4: Thứ Sáu 13/11 09:50', to: '2026-11-13T09:50:00+07:00' },
+  { label: 'Cảnh 5: Thứ Sáu 13/11 10:10', to: '2026-11-13T10:10:00+07:00' },
+  { label: 'Cảnh 6: Thứ Sáu 13/11 10:30', to: '2026-11-13T10:30:00+07:00' },
 ];
 
 const field = 'w-full rounded-lg border border-line-strong px-2.5 text-sm';
@@ -44,6 +56,7 @@ export function SimulatorPanel() {
   const personas = usePersonas();
   const inbox = useInbox();
   const customer = useCustomerMessage();
+  const image = useCustomerImage();
   const page = usePageMessage();
   const clock = useAdvanceClockTo();
 
@@ -131,6 +144,14 @@ export function SimulatorPanel() {
           <button type="submit" className={sendBtn} disabled={customerText.trim() === '' || customer.isPending}>
             Gửi như khách
           </button>
+          <div className="flex flex-col gap-1.5">
+            {CUSTOMER_IMAGES.map((im) => (
+              <button key={im.file} type="button" className="h-8 rounded-lg border border-line-strong bg-white px-2.5 text-left text-sm disabled:opacity-50" disabled={image.isPending} onClick={() => image.mutate({ target: { persona }, file: im.file })}>
+                {im.label}
+              </button>
+            ))}
+          </div>
+          {image.error ? <ErrorBanner error={image.error} /> : null}
           {customer.isSuccess ? (
             <div role="status" className="text-xs font-semibold text-ok">
               Đã gửi. AI trích xuất sau vài giây.

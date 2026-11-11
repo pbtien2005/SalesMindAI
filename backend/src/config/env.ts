@@ -85,6 +85,8 @@ const envSchema = z.object({
   /** Số lời gọi AI tối đa mỗi doanh nghiệp mỗi ngày (giờ Việt Nam). Chỉ áp dụng khi AI_MODE=live. Doanh nghiệp có thể có hạn mức riêng. */
   AI_DAILY_CAP: z.coerce.number().int().min(0).max(1_000_000).default(500),
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(30_000),
+  /** Thư mục ảnh demo (bill mẫu). Mặc định: `backend/demo-assets`. */
+  BILL_ASSET_DIR: z.string().min(1).optional(),
   /** Số tin gần nhất (cả hai chiều) đưa cho AI đọc. */
   AI_CONTEXT_MESSAGES: z.coerce.number().int().min(1).max(200).default(30),
 

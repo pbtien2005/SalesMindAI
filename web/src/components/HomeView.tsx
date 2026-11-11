@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { daysOverdue, formatDateTime, formatWait } from '../api/format';
+import { daysOverdue, formatDateTime, formatVnd, formatWait } from '../api/format';
 import { useHome } from '../api/hooks';
 import type { HomeData, Reminder } from '../api/types';
 import { useSession } from '../state/session';
@@ -36,13 +36,15 @@ function StatCard({ accent, label, value, detail, action, onOpen }: { accent: Ac
   );
 }
 
-/** Tiền cọc nằm ngoài phạm vi demo này (cần đọc bill và đơn hàng). */
-function DepositPlaceholder() {
+/** Tiền cọc Sale đã xác nhận trong ngày (giờ Việt Nam). */
+function DepositCard({ amount, onOpen }: { amount: number; onOpen: () => void }) {
   return (
-    <div className="rounded-xl border border-dashed border-[#aeb8c6] bg-white p-4">
-      <div className="text-[13px] text-ink-3">Tiền cọc hôm nay</div>
-      <div className="text-xl font-bold leading-[1.8] text-[#5b6472]">Sắp có</div>
-      <div className="text-[13px] text-ink-3">Cần đọc bill và đơn hàng, chưa nằm trong bản demo này</div>
+    <div className="rounded-xl border border-t-4 border-line border-t-ok bg-white p-4">
+      <button type="button" onClick={onOpen} aria-label={`Tiền cọc hôm nay: ${formatVnd(amount)}, bấm để xem đơn hàng`} className="block w-full border-0 bg-transparent p-0 text-left">
+        <div className="text-[13px] text-ink-3">Tiền cọc hôm nay</div>
+        <div className="text-[28px] font-bold leading-[1.4] tabular-nums text-ok">{formatVnd(amount)}</div>
+        <div className="text-[13px] text-ink-2">{amount === 0 ? 'Chưa có khoản cọc nào được xác nhận' : 'Các khoản Sale đã xác nhận hôm nay'}</div>
+      </button>
     </div>
   );
 }
@@ -155,7 +157,7 @@ export function HomeView() {
           value={upcoming + following}
           detail={upcoming + following === 0 ? 'Chưa có lịch nhắc' : `${upcoming} việc sắp đến hạn, ${following} khách đang được bám`}
         />
-        <DepositPlaceholder />
+        <DepositCard amount={h.depositToday ?? 0} onOpen={() => setView('orders')} />
       </div>
 
       <section aria-label="Việc quá hạn và lịch nhắc" className="rounded-xl border border-line bg-white p-4">

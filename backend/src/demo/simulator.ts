@@ -54,6 +54,16 @@ export function customerPayload(a: CommonArgs) {
   });
 }
 
+/** Tin của khách chỉ có một ảnh (attachment loại image). `url` là đường dẫn ảnh demo do server phục vụ. */
+export function customerImagePayload(a: Omit<CommonArgs, 'text'> & { url: string }) {
+  return wrap(a.fbPageId, a.at, {
+    sender: { id: a.psid },
+    recipient: { id: a.fbPageId },
+    timestamp: a.at.getTime(),
+    message: { mid: a.mid ?? newMid(), attachments: [{ type: 'image', payload: { url: a.url } }] },
+  });
+}
+
 /** Tin do nhân viên gõ ở Page Inbox: Meta gửi dưới dạng echo, `app_id` là của Page Inbox. */
 export function pageEchoPayload(a: CommonArgs & { appId: string }) {
   return wrap(a.fbPageId, a.at, {

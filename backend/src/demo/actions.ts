@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { conversations } from '../db/schema.js';
 import { DEMO_PAGE_INBOX_APP_ID, type DemoContext } from './seed.js';
-import { customerPayload, pageEchoPayload, PERSONAS, sendSigned, type Persona, type WebhookPoster } from './simulator.js';
+import { customerImagePayload, customerPayload, pageEchoPayload, PERSONAS, sendSigned, type Persona, type WebhookPoster } from './simulator.js';
 
 export interface SimDeps {
   db: Db;
@@ -83,9 +83,34 @@ export async function simulateCustomerMessage(
   return { conversationId };
 }
 
+export const DEMO_IMAGE_FILES = ['bill-6000000.png', 'bill-3000000.png', 'sofa.png'] as const;
+
+/** Khách gửi một ảnh mẫu (bill hoặc ảnh sofa). Ảnh nằm ở `demo-assets/` và được phục vụ qua `/api/demo/assets/`. */
+export async function simulateCustomerImage(
+  d: SimDeps,
+  target: { persona: string } | { conversationId: string },
+  file: string,
+  now: Date,
+): Promise<{ conversationId: string }> {
+  if (!(DEMO_IMAGE_FILES as readonly string[]).includes(file)) throw new SimError('Ảnh mẫu không hợp lệ.');
+  let conversationId: string;
+  let psid: string;
+  if ('persona' in target) {
+    const persona = PERSONAS[target.persona];
+    if (!persona) throw new SimError(`Không có khách demo "${target.persona}".`);
+    conversationId = await ensurePersonaConversation(d.db, d.ctx, persona);
+    psid = persona.psid;
+  } else {
+    conversationId = target.conversationId;
+    psid = await psidOf(d.db, d.ctx, conversationId);
+  }
+  await sendSigned(d.poster, d.appSecret, customerImagePayload({ fbPageId: d.ctx.fbPageId, psid, url: `/api/demo/assets/${file}`, at: now }));
+  return { conversationId };
+}
+
 /** Tin do nhân viên (Lan) gõ ở Page Inbox: Meta gửi về dưới dạng echo. */
-export async function simulatePageMessage(d: SimDeps, conversationId: string, text: string, now: Date): Promise<void> {
+export async function simulatePageMessage(d: SimDeps, conversationId: string, text: string, now: Date, appId: string = DEMO_PAGE_INBOX_APP_ID): Promise<void> {
   const t = checkText(text);
   const psid = await psidOf(d.db, d.ctx, conversationId);
-  await sendSigned(d.poster, d.appSecret, pageEchoPayload({ fbPageId: d.ctx.fbPageId, psid, text: t, at: now, appId: DEMO_PAGE_INBOX_APP_ID }));
+  await sendSigned(d.poster, d.appSecret, pageEchoPayload({ fbPageId: d.ctx.fbPageId, psid, text: t, at: now, appId }));
 }

@@ -1,7 +1,7 @@
 /** Xóa và xuất dữ liệu. Mọi xóa đi theo thứ tự khóa ngoại và nằm trong một giao dịch. */
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { conversations, messages, pages, profileFields, proposals, tasks, tenants, users, memberships } from '../db/schema.js';
+import { conversations, messages, orders, pages, payments, profileFields, proposals, tasks, tenants, users, memberships } from '../db/schema.js';
 
 /** Xóa các hội thoại (và mọi thứ gắn với chúng). Trả số hội thoại đã xóa. */
 export async function deleteConversations(db: Db, ids: string[]): Promise<number> {
@@ -9,7 +9,7 @@ export async function deleteConversations(db: Db, ids: string[]): Promise<number
   return db.transaction(async (tx) => {
     const idList = sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `);
     // proposals trỏ extraction_runs; profile_fields trỏ proposals: xóa theo thứ tự ngược.
-    for (const table of ['profile_fields', 'proposals', 'extraction_runs', 'tasks', 'followup_state', 'messages']) {
+    for (const table of ['reply_drafts', 'payments', 'orders', 'profile_fields', 'proposals', 'extraction_runs', 'tasks', 'followup_state', 'messages']) {
       await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE conversation_id IN (${idList})`);
     }
     await tx.delete(conversations).where(inArray(conversations.id, ids));
@@ -24,7 +24,7 @@ export async function deleteConversations(db: Db, ids: string[]): Promise<number
 export async function deleteTenant(db: Db, tenantId: string): Promise<void> {
   await db.transaction(async (tx) => {
     const memberIds = (await tx.select({ id: memberships.userId }).from(memberships).where(eq(memberships.tenantId, tenantId))).map((m) => m.id);
-    for (const table of ['profile_fields', 'proposals', 'extraction_runs', 'tasks', 'followup_state', 'messages', 'conversations', 'page_policy_events', 'oauth_states', 'invitations', 'audit_log', 'ai_usage', 'pages']) {
+    for (const table of ['reply_drafts', 'payments', 'orders', 'products', 'profile_fields', 'proposals', 'extraction_runs', 'tasks', 'followup_state', 'messages', 'conversations', 'page_policy_events', 'oauth_states', 'invitations', 'audit_log', 'ai_usage', 'pages']) {
       await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE tenant_id = ${tenantId}`);
     }
     if (memberIds.length > 0) await tx.delete(users).where(inArray(users.id, memberIds)); // phiên, token, thành viên xóa theo (CASCADE)
@@ -51,6 +51,8 @@ export async function exportTenant(db: Db, tenantId: string) {
       .where(eq(messages.tenantId, tenantId)),
     profileFields: await db.select({ conversationId: profileFields.conversationId, field: profileFields.field, value: profileFields.value }).from(profileFields).where(eq(profileFields.tenantId, tenantId)),
     proposals: await db.select({ id: proposals.id, conversationId: proposals.conversationId, field: proposals.field, value: proposals.value, status: proposals.status, decidedBy: proposals.decidedBy }).from(proposals).where(eq(proposals.tenantId, tenantId)),
+    orders: await db.select({ code: orders.code, status: orders.status, conversationId: orders.conversationId, sku: orders.sku, quantity: orders.quantity, totalVnd: orders.totalVnd, depositPaidVnd: orders.depositPaidVnd }).from(orders).where(eq(orders.tenantId, tenantId)),
+    payments: await db.select({ conversationId: payments.conversationId, status: payments.status, amountVnd: payments.amountVnd, confirmedBy: payments.confirmedBy }).from(payments).where(eq(payments.tenantId, tenantId)),
     tasks: await db.select({ conversationId: tasks.conversationId, title: tasks.title, dueAt: tasks.dueAt, doneAt: tasks.doneAt }).from(tasks).where(eq(tasks.tenantId, tenantId)),
   };
 }

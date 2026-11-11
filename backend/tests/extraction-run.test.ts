@@ -271,3 +271,31 @@ describe('buildProposal (hàm thuần)', () => {
     expect(buildProposal({ field: 'quantity', value: '1', quotes: [q, q, q, q, q] }, map)).toBeNull();
   });
 });
+
+describe('runExtraction: cảnh 4 (mã hàng, giá, tín hiệu chốt)', () => {
+  it('sku có đúng một đề xuất với câu gốc là chuỗi con; ngân sách cũ không bị thay bởi giá; closeSignal đúng', async () => {
+    const { loadConversationSummaries } = await import('../src/followup/overview.js');
+    const base = await seedBase(db, { aiEnabled: true });
+    await addMessage(db, base, { text: 'Anh đang tìm sofa tầm 15 triệu', sentAt: T(0) });
+    await runExtraction(deps(new OfflineExtractor()), base.conversationId);
+    const text = 'Anh xem ảnh thấy ổn rồi, lấy 1 bộ Sofa Milan xám mã SF-021, giá 12 triệu như em báo nhé. Chốt luôn.';
+    const m = await addMessage(db, base, { text, sentAt: T(30) });
+    await runExtraction(deps(new OfflineExtractor()), base.conversationId);
+
+    const rows = await pending(base);
+    const budget = rows.filter((r) => r.field === 'budget');
+    expect(budget).toHaveLength(1);
+    expect(JSON.stringify(budget[0]!.value)).toContain('15.000.000');
+    const sku = rows.filter((r) => r.field === 'sku');
+    expect(sku).toHaveLength(1);
+    expect((sku[0]!.value as { text: string }).text).toBe('SF-021');
+    const ev = (sku[0]!.evidence as Array<{ messageId: string; start: number; end: number; text: string }>)[0]!;
+    expect(ev.messageId).toBe(m);
+    expect(text.slice(ev.start, ev.end)).toBe(ev.text);
+    expect(byField(rows, 'unit_price')).toBeTruthy();
+
+    const [s] = await loadConversationSummaries(db, base.tenantId, T(31));
+    expect(s!.closeSignal).toMatchObject({ messageId: m });
+    expect(s!.closeSignal!.text.toLowerCase()).toBe('chốt luôn');
+  });
+});

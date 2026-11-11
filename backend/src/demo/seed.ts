@@ -7,7 +7,7 @@ import type { TokenCrypto } from '../crypto/token-crypto.js';
 import type { Db } from '../db/client.js';
 import { randomBytes } from 'node:crypto';
 import { createUser } from '../auth/users.js';
-import { conversations, memberships, messages, pages, tasks, tenants, users } from '../db/schema.js';
+import { conversations, memberships, messages, pages, products, tasks, tenants, users } from '../db/schema.js';
 import { OfflineExtractor } from '../extraction/offline-extractor.js';
 import { runExtraction } from '../extraction/run.js';
 import { setClockTo } from './clock.js';
@@ -62,6 +62,10 @@ export async function getDemoContext(db: Db): Promise<DemoContext | null> {
 async function wipeDemoTenant(db: Db, tenantId: string): Promise<void> {
   await db.transaction(async (tx) => {
     for (const table of [
+      'reply_drafts',
+      'payments',
+      'orders',
+      'products',
       'profile_fields',
       'proposals',
       'extraction_runs',
@@ -150,7 +154,13 @@ export async function resetDemo(deps: ResetDeps): Promise<DemoContext & { clockN
   // aiEnabledAt xa trong quá khứ: tin nền (giờ demo) không bị coi là "trước lúc bật AI".
   const [tenant] = await db
     .insert(tenants)
-    .values({ name: DEMO_TENANT_NAME, aiExtractionEnabled: true, aiEnabledAt: new Date('2020-01-01T00:00:00Z') })
+    .values({
+      name: DEMO_TENANT_NAME,
+      aiExtractionEnabled: true,
+      aiEnabledAt: new Date('2020-01-01T00:00:00Z'),
+      // Thông tin giả, ghi rõ là demo: không phải tài khoản ngân hàng thật.
+      paymentInstructions: 'Chủ TK: NOI THAT MINH PHAT (DEMO), STK 0000 0000 000, Ngân hàng DEMO',
+    })
     .returning({ id: tenants.id });
   const [page] = await db
     .insert(pages)
@@ -164,6 +174,7 @@ export async function resetDemo(deps: ResetDeps): Promise<DemoContext & { clockN
     .returning({ id: pages.id });
   const ctx: DemoContext = { tenantId: tenant!.id, pageId: page!.id, fbPageId: DEMO_FB_PAGE_ID };
   await ensureDemoUsers(db, ctx.tenantId, realNow);
+  await db.insert(products).values({ tenantId: ctx.tenantId, sku: 'SF-021', name: 'Sofa Milan xám', priceVnd: 12_000_000 });
 
   let n = 0;
   const convIds: string[] = [];

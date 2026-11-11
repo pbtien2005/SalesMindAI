@@ -127,3 +127,8 @@ export function toLocalInput(iso: string): string {
   const p = vnParts(iso);
   return p ? `${p.y}-${pad(p.mo)}-${pad(p.d)}T${pad(p.h)}:${pad(p.mi)}` : '';
 }
+
+/** 6000000 -> "6.000.000 ₫". */
+export function formatVnd(n: number): string {
+  return `${new Intl.NumberFormat('vi-VN').format(n)} ₫`;
+}

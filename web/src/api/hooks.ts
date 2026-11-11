@@ -126,6 +126,29 @@ export function useStopFollowup() {
   return useMutation({ mutationFn: (conversationId: string) => api.stopFollowup(conversationId), onSuccess: refresh });
 }
 
+export const useOrders = () => useQuery({ queryKey: key('orders'), queryFn: api.orders, refetchInterval: POLL_MS, retry: shouldRetry });
+
+function useOrderMutation<V, R>(fn: (v: V) => Promise<R>) {
+  const refresh = useRefreshAll();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: refresh,
+    // 409: đã được xử lý ở nơi khác, làm mới để thẻ cập nhật.
+    onError: (e) => {
+      if (e instanceof ApiError && e.status === 409) void refresh();
+    },
+  });
+}
+export const useUpdateOrder = () => useOrderMutation((v: { id: string; patch: { address?: string; quantity?: number; customerName?: string; phone?: string } }) => api.updateOrder(v.id, v.patch));
+export const useSendReplyDraft = () => useOrderMutation((v: { id: string; text?: string }) => api.sendReplyDraft(v.id, v.text));
+export const useConfirmPayment = () => useOrderMutation((v: { id: string; amountVnd?: number }) => api.confirmPayment(v.id, v.amountVnd));
+export const useRejectPayment = () => useOrderMutation((id: string) => api.rejectPayment(id));
+export const useConfirmOrder = () => useOrderMutation((v: { id: string; address: string }) => api.confirmOrder(v.id, v.address));
+export function useCustomerImage() {
+  const refresh = useRefreshAll();
+  return useMutation({ mutationFn: (v: { target: { persona: string } | { conversationId: string }; file: string }) => api.customerImage(v.target, v.file), onSuccess: refresh });
+}
+
 export function useCustomerMessage() {
   const refresh = useRefreshAll();
   return useMutation({
