@@ -1,0 +1,34 @@
+# Render Blueprint: New > Blueprint > chọn repo này. Chỉ phải điền hai biến bí mật (sync: false).
+services:
+  - type: web
+    name: salesmindai-pbtien
+    runtime: image
+    image:
+      url: ghcr.io/pbtien2005/salesmindai:latest
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: PUBLIC_BASE_URL
+        value: https://salesmindai-pbtien.onrender.com
+      - key: TRUST_PROXY
+        value: "true"
+      - key: DEMO_MODE
+        value: "false"
+      - key: SIGNUP_MODE
+        value: closed
+      - key: AI_MODE
+        value: offline
+      - key: GRAPH_API_VERSION
+        value: v26.0
+      - key: FB_APP_ID
+        value: changeme
+      - key: APP_SECRET
+        value: changeme
+      - key: VERIFY_TOKEN
+        value: changeme
+      # Bí mật: dán trong Render Dashboard khi tạo Blueprint.
+      - key: DATABASE_URL        # = DATABASE_URL_UNPOOLED của Neon (host không có -pooler)
+        sync: false
+      - key: TOKEN_ENC_KEY       # khóa MỚI, base64 của 32 byte (không dùng khóa local)
+        sync: false
